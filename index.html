@@ -75,6 +75,9 @@
   #maplist .pl small { display:block; color:var(--dim); font-size:12px; }
   #maplist .dot { width:12px; height:12px; border-radius:50%; flex:none; border:2px solid #000; }
   @media (max-width:700px) { #bigmap { flex-direction:column; } #mapside { width:auto; max-height:40%; } }
+  #micbox { position:absolute; left:18px; bottom:42px; width:160px; font-size:12px; color:#ddd; display:none; text-shadow:0 1px 3px #000; }
+  #micbox .track { height:6px; background:#ffffff1c; border-radius:6px; overflow:hidden; margin-top:3px; }
+  #micbar { height:100%; width:0; background:#666; }
   #err { position:fixed; left:10px; bottom:10px; z-index:99; max-width:70vw; background:#400; color:#fff; font:12px monospace; padding:8px; display:none; white-space:pre-wrap; }
   #loading { position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center; background:#000; font-size:20px; color:var(--dim); }
 </style>
@@ -96,6 +99,7 @@
     <p>Lauf durch die echte Düsseldorfer Altstadt, geh in Brauhäuser, Clubs, Bars und die Shisha-Lounge,
       trink und rauch so viel du willst und spür, wie es von Glas zu Glas und von Zug zu Zug mehr wird.</p>
     <label class="chk"><input type="checkbox" id="age18"> Ich bin mindestens 18 Jahre alt.</label>
+    <label class="chk"><input type="checkbox" id="useMic"> 🎤 Mikrofon benutzen: Leute hören dich, reagieren auf Reden und Schreien (Kopfhörer empfohlen)</label>
     <div class="row">
       <label class="btn" for="folder">🎵 Musik-Ordner wählen (optional)</label>
       <input type="file" id="folder" webkitdirectory directory multiple hidden>
@@ -137,6 +141,7 @@
   <div id="menu"></div>
   <canvas id="mini" width="190" height="190"></canvas>
   <div id="nav"></div>
+  <div id="micbox"><div id="micst">🎤</div><div class="track"><div id="micbar"></div></div></div>
   <div id="hint">Tab Karte · V Kamera · M Musik · N nächster Track · J Joint · K Kippe</div>
 </div>
 <div id="bigmap">
@@ -2078,7 +2083,7 @@ const Sound = {
 const SUB = { alc: { s: 0, l: 0, abs: 16, el: .05 }, thc: { s: 0, l: 0, abs: 9, el: .032 }, nic: { s: 0, l: 0, abs: 2.5, el: .7 } };
 const FX = { alc: 0, thc: 0, nic: 0, para: 0, blink: 0, tint: new THREE.Color(0x40ff40), tintAmt: 0, flash: 0 };
 const GAME = { started: false, inside: null, clock: 22 * 60 + 47, joints: false, cigs: true, shisha: null, koebesAlt: false, koebesT: -1,
-  munch: 0, fed: 0, fade: 0, fadeTo: 0, fadeSpeed: 3, fadeCb: null, blackout: false, haze: 0, lastHeart: 0, thoughtT: 8, hintsShown: {} };
+  banned: {}, munch: 0, fed: 0, fade: 0, fadeTo: 0, fadeSpeed: 3, fadeCb: null, blackout: false, haze: 0, lastHeart: 0, thoughtT: 8, hintsShown: {} };
 function updateSubstances(dt) {
   for (const k in SUB) {
     const S = SUB[k], a = S.s * (1 - Math.exp(-dt / S.abs));
@@ -2376,6 +2381,7 @@ function currentAct() {
 }
 function fadeThen(cb, speed = 3) { GAME.fadeTo = 1; GAME.fadeSpeed = speed; GAME.fadeCb = cb; }
 function enterVenue(v) {
+  if (v.club && (GAME.banned[v.id] || 0) > TIME.value) { say('Türsteher', pick(['Du schon wieder? Nee.', 'Erst rumbrüllen, dann rein wollen? Nix da.', 'Komm in \'ner halben Stunde wieder.'])); return; }
   if (v.club && SUB.alc.l > 78) { say('Türsteher', pick(['Heute nicht, Junge. Komm wieder, wenn du geradeaus laufen kannst.', 'Nee, nee, nee. So kommst du hier nicht rein.', 'Erstmal ein Wasser, dann reden wir.'])); return; }
   Sound.door();
   fadeThen(() => {
@@ -2424,7 +2430,9 @@ function updateIndoorCrowd(dt, t) {
       const a = o.home.s * Math.PI * 2 + t * .45; o.x = it.ox + Math.cos(a) * 4.4; o.z = 1.8 + Math.sin(a) * 3.2; o.ry = Math.atan2(-Math.sin(a), Math.cos(a));
     } else if (o.mode === 'dance') { o.ry += Math.sin(t * .3 + o.phase) * dt * .4; }
     if (o.mode === 'polo') o.phase += dt * 5;
-    if (o.host) o.look = Math.hypot(o.x - P.x, o.z - P.z) < 6 ? _pl : null;
+    if (o.cheerT > 0 && (o.cheerT -= dt) <= 0) { o.act = o.prevAct; o.prevAct = null; }
+    if (o.lookT > 0) o.lookT -= dt;
+    o.look = (o.host && Math.hypot(o.x - P.x, o.z - P.z) < 6) || o.lookT > 0 ? _pl : null;
     indoor.pose(o, t);
   }
   _pl[0] = P.x; _pl[1] = P.z;
@@ -2514,6 +2522,87 @@ function talkTo(o) {
     return;
   }
   npcSay(o, pick(drunk && Math.random() < .5 ? CHAT.talkDrunk : CHAT.talk), 4);
+}
+
+// =====================================================================
+//  Mikrofon (Phase 4): Lautstärke steuert, wie die Leute reagieren
+// =====================================================================
+const MIC = { on: false, level: 0, db: -100, floor: -62, state: 'still', talkT: 0, quietT: 0, loudT: 0, cool: 0, peak: 'still' };
+const RANK = { still: 0, 'flüstern': 1, reden: 2, schreien: 3 };
+async function startMic() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showMsg('🎤 Das Mikro geht so nicht. Starte das Spiel mit <b>start-windows.bat</b> bzw. <b>start-mac.command</b> (siehe Anleitung).', 9); return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false } });
+    const src = Sound.ctx.createMediaStreamSource(stream);
+    MIC.an = Sound.ctx.createAnalyser(); MIC.an.fftSize = 1024; src.connect(MIC.an);
+    const mute = Sound.ctx.createGain(); mute.gain.value = 0; MIC.an.connect(mute).connect(Sound.ctx.destination);   // Chrome rechnet nur angeschlossene Knoten
+    MIC.buf = new Float32Array(1024); MIC.on = true;
+    $('micbox').style.display = 'block';
+    showMsg('🎤 Mikro ist an. Stell dich vor jemanden und sprich ihn einfach an. Schreien fällt auf, Flüstern versteht keiner.', 8);
+  } catch (e) { console.warn('Mikro:', e); showMsg('🎤 Kein Zugriff aufs Mikro (' + e.name + '). Im Browser oben links beim Schloss-Symbol erlauben.', 8); }
+}
+function updateMic(dt) {
+  if (!MIC.on) return;
+  MIC.an.getFloatTimeDomainData(MIC.buf);
+  let sum = 0; for (let i = 0; i < MIC.buf.length; i++) sum += MIC.buf[i] * MIC.buf[i];
+  const db = 10 * Math.log10(sum / MIC.buf.length + 1e-10), rel = db - MIC.floor;
+  MIC.db = db;
+  // Grundrauschen mitlernen (schnell nach unten, langsam nach oben, aber nicht beim Reden)
+  if (db < MIC.floor) MIC.floor = lerp(MIC.floor, db, .2); else if (rel < 10) MIC.floor += dt * .4;
+  MIC.floor = clamp(MIC.floor, -90, -35);
+  MIC.level = lerp(MIC.level, clamp(rel / 42), 1 - Math.exp(-dt * 14));
+  const st = rel < 9 ? 'still' : rel < 18 ? 'flüstern' : (rel < 31 || db < -26) ? 'reden' : 'schreien';
+  MIC.state = st; MIC.cool -= dt;
+  if (st !== 'still') { MIC.talkT += dt; MIC.quietT = 0; if (RANK[st] > RANK[MIC.peak]) MIC.peak = st; }
+  else if ((MIC.quietT += dt) > .65 && MIC.talkT > .45) { onUtterance(MIC.peak); MIC.talkT = 0; MIC.peak = 'still'; }
+  else if (MIC.quietT > .65) { MIC.talkT = 0; MIC.peak = 'still'; }
+  if (st === 'schreien') { if ((MIC.loudT += dt) > .3 && MIC.cool <= 0) { MIC.cool = 4; onShout(); } } else MIC.loudT = 0;
+  // Anzeige
+  $('micbar').style.width = (MIC.level * 100).toFixed(0) + '%';
+  $('micbar').style.background = st === 'schreien' ? '#ff3d3d' : st === 'reden' ? '#7aff5a' : st === 'flüstern' ? '#38e8ff' : '#666';
+  $('micst').textContent = '🎤 ' + st;
+}
+// Du hast etwas gesagt (Satz zu Ende)
+function onUtterance(kind) {
+  if (kind === 'schreien' || !GAME.started) return;
+  const whisper = kind === 'flüstern';
+  if (Menu.open && Menu.who) {
+    Menu.line = whisper ? 'Hä? Sprich mal lauter, hier ist Musik!' : pick(['Klar, Chef.', 'Hab ich gehört, ja.', 'Sag einfach, was du trinken willst.', 'Haha, du bist mir einer.', 'Erzähl weiter!']);
+    Menu.render(); return;
+  }
+  if (!GAME.inside && Math.hypot(P.x - KALLE_POS[0], P.z - KALLE_POS[1]) < 4) { say('Kalle', whisper ? 'Psst... genau, Bruder. Leise ist gut.' : pick(KALLE_TALK), 6); return; }
+  if (GAME.inside) {
+    const v = GAME.inside, host = indoor.list.find(o => o.host && Math.hypot(o.x - P.x, o.z - P.z) < 4);
+    if (host) { say(v.host.name, whisper ? 'Was? Ich versteh dich nicht!' : pick(v.host.lines[hostStage()])); return; }
+    const o = indoor.list.filter(o => !o.host).sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z))[0];
+    if (o && Math.hypot(o.x - P.x, o.z - P.z) < 3) { o.lookT = 4; npcSay(o, whisper || v.club ? pick(['WAS?', 'Ich versteh nix, die Musik!', 'Hä?']) : pick(CHAT.talk)); }
+    return;
+  }
+  const o = nearestPerson(whisper ? 1.6 : 3.2);
+  if (!o) return;
+  if (whisper) { o.lookT = 3; npcSay(o, pick(['Hä? Was?', 'Sprich mal lauter!', 'Hast du was gesagt?'])); }
+  else talkTo(o);
+}
+// Du schreist
+function onShout() {
+  if (GAME.inside) {
+    const v = GAME.inside;
+    if (v.theme === 'brauhaus' || v.theme === 'cocktail' || v.theme === 'chill') { say(v.host.name, pick(['Hier wird nich geschrien, hier wird getrunken!', 'Psst! Leute wollen sich unterhalten.', 'Ich bin nicht taub, Freundchen.'])); return; }
+    for (const o of indoor.list) if (!o.host && Math.random() < .45) { o.prevAct = o.prevAct || o.act; o.act = 'cheer'; o.cheerT = 3; }
+    const fans = indoor.list.filter(o => !o.host); for (let i = 0; i < 3 && fans.length; i++) npcSay(pick(fans), pick(['WOOOO!', 'JAAA!', 'Lauter!', 'Eskalation!']), 2.5);
+    return;
+  }
+  let n = 0;
+  for (const o of street.list) {
+    const d = Math.hypot(o.x - P.x, o.z - P.z); if (d > 16) continue;
+    o.lookT = 3 + Math.random() * 2;
+    if (n < 2 && Math.random() < .3) { n++; npcSay(o, pick(SUB.alc.l > 40 ? ['Der ist ja voll!', 'Hahaha, ja man!', 'Wooo!', 'Geh nach Hause!'] : ['Was brüllst du so?', 'Ey, chill mal!', 'Wooo!', 'Psst!', 'Geht\'s noch?']), 2.8); }
+  }
+  for (const v of VENUES) if (v.club && Math.hypot(v.door.x - P.x, v.door.z - P.z) < 10) {
+    GAME.banned[v.id] = TIME.value + 30; say('Türsteher', 'Du brüllst hier so rum? Heute nicht, Freundchen.');
+  }
 }
 
 // =====================================================================
@@ -2958,6 +3047,7 @@ $('play').addEventListener('click', () => {
   if (!Sound.ready) Sound.init(); else Sound.ctx.resume();
   $('start').style.display = 'none'; $('hud').style.display = 'block';
   GAME.started = true; controls.lock();
+  if ($('useMic').checked && !MIC.on) startMic();
   setTimeout(() => showMsg('Willkommen in der Altstadt! Die Clubs leuchten auf der Minikarte. <b>Kalle</b> sitzt unten am Rhein, das <b>Büdchen</b> steht am Burgplatz.', 8), 600);
   setTimeout(() => thought('Was für eine Nacht. Erstmal ein Alt.'), 4000);
 });
@@ -3008,7 +3098,7 @@ function frame() {
   sky.position.copy(head.position);
   water.material.uniforms.time.value += dt * .35;
   Sound.update(dt, t);
-  updateHUD(dt); updateBubbles(dt); updateNav(dt, t);
+  updateHUD(dt); updateBubbles(dt); updateMic(dt); updateNav(dt, t);
   euler.setFromQuaternion(head.quaternion, 'YXZ'); drawMinimap(euler.y);
   if (GAME.mapOpen) drawBigMap();
   const u = fxPass.uniforms;
@@ -3019,7 +3109,7 @@ function frame() {
   composer.render();
 }
 frame();
-window.__game = { NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
+window.__game = { MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
 </script>
 </body>
 </html>
