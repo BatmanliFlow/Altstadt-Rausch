@@ -34,6 +34,20 @@ Beim ersten Start braucht der Browser kurz Internet, weil die 3D-Engine (three.j
 | H | Tasten-Hinweis ein/aus |
 | Esc | Pause |
 
+## Neu in Phase 5: mehr Altstadt
+
+- **Drei neue Locations:**
+  - **O'Rheily's Irish Pub** (Bolkerstraße): Stout, Cider, Whiskey, Lederbänke, Fässer, Dartscheibe, Irish-Folk.
+  - **Kehlkopf Karaoke:** Geh auf die Bühne (E am Mikroständer) und sing. Der Text läuft auf der Leinwand und unten im Bild.
+    Mit Mikro wird bewertet, wie viel du wirklich singst, am Ende gibt's Punkte und Applaus, ab 85 Punkten einen Shot aufs Haus.
+  - **Pommes Paradies** (Imbiss): Pommes rot-weiß, Currywurst, Döner. Hilft gegen den Fressflash.
+- **Straßenmusiker** auf der Bolkerstraße mit Gitarre, um ihn herum bleiben Leute stehen und filmen.
+- **Polizeistreife** läuft durch die Altstadt und spricht dich an, wenn du zu voll bist.
+- **Rosenverkäufer** kommen auf dich zu („Rose? Für die Freundin?“), mit E kaufst du eine.
+- **Junggesellenabschied:** Braut in Weiß mit Mädels in Pink, sie grölen „JGA! JGA!“ und geben dir einen aus, wenn du sie ansprichst.
+- **Schönere Fassaden:** Dachgesimse, Stockwerksbänder über dem Erdgeschoss, Ausleger-Schilder, die quer in die Gasse ragen.
+- Die Kamera geht in engen Gassen automatisch über die Schulter, statt in deine Figur zu fahren.
+
 ## Neu: Altstadt am Wochenende
 
 - **Rappelvoll:** rund 1.500 Leute auf der Straße. Grüppchen vor jeder Kneipe um Altbierfässer und Stehtische,
@@ -74,6 +88,8 @@ Beim ersten Start braucht der Browser kurz Internet, weil die 3D-Engine (three.j
   | Habibi Cloud | Shisha-Lounge (5 Sorten) | Arabic Chill |
   | Blue Lagoon | Cocktailbar mit Lara | Bar Jazz-Hop |
 
+  Seit Phase 5 außerdem: O'Rheily's Irish Pub, Kehlkopf Karaoke und Pommes Paradies (siehe oben).
+
   Dazu das **Büdchen am Burgplatz** (Bier, Kippen, Chips gegen den Fressflash) und **Kalle** auf der Bank am Rhein.
 - **Rausch-System:** Alkohol, THC und Nikotin fluten verzögert an und bauen langsam ab.
   - Alkohol: Schwanken, Wellen, Doppeltsehen, Torkeln und Stolpern, Augen fallen zu, Kotzen, Filmriss (du wachst am Rhein auf).
@@ -91,7 +107,7 @@ den Ordner `musik` aus. Die Songs bleiben nur auf deinem Rechner und werden nich
 ## Nächste Phasen
 
 - ~~Phase 4: Mikrofon~~ erledigt.
-- **Phase 5:** Mehr Ausbau der Locations und Straßen.
+- **Phase 5:** erster Ausbau erledigt (siehe oben), geht beliebig weiter.
 - **Phase 6:** Freie KI-Gespräche mit Köbes, Lara, Emre, Kalle und den anderen über Sprache. Braucht einen eigenen API-Key (z. B. Claude API).
 - **Phase 7:** Magic Mushrooms und weitere Substanzen, Kombi-Effekte.
 - **Später:** Google Photorealistic 3D Tiles (Maps-Key) als echte Kulisse, Spotify als Musikquelle (Premium + Developer-App).

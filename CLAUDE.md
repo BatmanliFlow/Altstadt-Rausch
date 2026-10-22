@@ -28,8 +28,11 @@ Phase 1 bis 4 fertig:
 Dazu „Altstadt am Wochenende“: ~1.500 NPCs, Third-Person-Kamera (V wechselt), GTA-Farblook, Karte (Tab) mit A*-Navigation,
 Sprechblasen, Anrempeln, NPCs ansprechen (E), Lichterketten, Fässer/Stehtische, Sitzstufen am Rhein, nasses Pflaster.
 
+Phase 5 (erster Teil): Irish Pub, Karaoke-Bar (`KARAOKE`, `SONGS` mit eigenen Texten), Imbiss; Locations können statt `at` (lat/lon) auch `xz` haben.
+Straßenmusiker (`BUSKER`, Genre `busker`), Polizei (`o.police`), Rosenverkäufer (`o.rose`, `roseSeller`), JGA (`o.jga`), Gesimse in `buildCity`, `hangingSign`.
+
 Offen:
-- **Phase 5:** Locations/Straßen ausbauen
+- **Phase 5 weiter:** Locations/Straßen ausbauen
 - **Phase 6:** freie KI-Gespräche (Spracherkennung → Claude API mit eigenem Key des Nutzers → Sprachausgabe), NPC kennt den Pegel des Spielers
 - **Phase 7:** Magic Mushrooms + weitere Substanzen, Kombi-Effekte
 - Später: Google 3D Tiles, Spotify, bessere NPC-Modelle, echtes Lallen über Mikro

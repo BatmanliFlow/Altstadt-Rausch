@@ -78,6 +78,8 @@
   #micbox { position:absolute; left:18px; bottom:42px; width:160px; font-size:12px; color:#ddd; display:none; text-shadow:0 1px 3px #000; }
   #micbox .track { height:6px; background:#ffffff1c; border-radius:6px; overflow:hidden; margin-top:3px; }
   #micbar { height:100%; width:0; background:#666; }
+  #karaoke { position:absolute; left:50%; bottom:20%; transform:translateX(-50%); text-align:center; display:none; background:#0a0418d0; padding:12px 24px; border-radius:14px; border:1px solid #ff5ae080; }
+  #karaoke .kt { color:#ff5ae0; font-weight:800; font-size:14px; } #karaoke .kl { color:#ffe04a; font-size:26px; font-weight:800; margin:6px 0; } #karaoke .kn { color:#a9a3b5; font-size:16px; }
   #err { position:fixed; left:10px; bottom:10px; z-index:99; max-width:70vw; background:#400; color:#fff; font:12px monospace; padding:8px; display:none; white-space:pre-wrap; }
   #loading { position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center; background:#000; font-size:20px; color:var(--dim); }
 </style>
@@ -141,6 +143,7 @@
   <div id="menu"></div>
   <canvas id="mini" width="190" height="190"></canvas>
   <div id="nav"></div>
+  <div id="karaoke"></div>
   <div id="micbox"><div id="micst">🎤</div><div class="track"><div id="micbar"></div></div></div>
   <div id="hint">Tab Karte · V Kamera · M Musik · N nächster Track · J Joint · K Kippe</div>
 </div>
@@ -530,6 +533,7 @@ function prepBuildings() {
 function buildCity() {
   const P = [], UV = [], C = [], S = [];
   const RP = [], RU = [], RC = [];
+  const GP = [], GC = [];   // Gesimse: Dachkante und Band über dem Erdgeschoss
   const v3 = (x, y, z) => P.push(x, y, z);
   for (const b of buildings) {
     const col = PALETTE[Math.floor(rnd() * PALETTE.length)].clone().multiplyScalar(.85 + rnd() * .2);
@@ -552,6 +556,19 @@ function buildCity() {
       x0 = Math.min(x0, ax); z0 = Math.min(z0, az); x1 = Math.max(x1, ax); z1 = Math.max(z1, az);
       if (Math.hypot(bx - ax, bz - az) < .2) continue;
       pushWall(ax, az, bx, bz);
+      const L = Math.hypot(bx - ax, bz - az);
+      if (!b.far && L > .8 && Math.hypot(ax, az - 20) < 420) {
+        let nx = (bz - az) / L, nz = -(bx - ax) / L;
+        if (pip((ax + bx) / 2 + nx * .3, (az + bz) / 2 + nz * .3, pts)) { nx = -nx; nz = -nz; }
+        const band = (y0, y1, o) => {
+          const ox = nx * o, oz = nz * o, q = (p1, p2, p3, p4) => { GP.push(...p1, ...p2, ...p3, ...p1, ...p3, ...p4); for (let k = 0; k < 6; k++) GC.push(col.r * .9, col.g * .9, col.b * .9); };
+          q([ax + ox, y0, az + oz], [bx + ox, y0, bz + oz], [bx + ox, y1, bz + oz], [ax + ox, y1, az + oz]);   // vorne
+          q([ax, y0, az], [bx, y0, bz], [bx + ox, y0, bz + oz], [ax + ox, y0, az + oz]);                       // unten
+          q([ax, y1, az], [bx, y1, bz], [bx + ox, y1, bz + oz], [ax + ox, y1, az + oz]);                       // oben
+        };
+        band(h - .34, h + .02, .24);
+        if (h > 7) band(3.18, 3.36, .07);
+      }
       if (!b.far) {
         const seg = { ax, az, bx, bz };
         segGrid.add(seg, Math.min(ax, bx) - 1, Math.min(az, bz) - 1, Math.max(ax, bx) + 1, Math.max(az, bz) + 1);
@@ -591,6 +608,9 @@ function buildCity() {
   rg.setAttribute('color', new THREE.Float32BufferAttribute(RC, 3));
   rg.computeVertexNormals();
   scene.add(new THREE.Mesh(rg, new THREE.MeshStandardMaterial({ map: TEX.roof, vertexColors: true, roughness: .8, side: THREE.DoubleSide })));
+  const gg = new THREE.BufferGeometry();
+  gg.setAttribute('position', new THREE.Float32BufferAttribute(GP, 3)); gg.setAttribute('color', new THREE.Float32BufferAttribute(GC, 3)); gg.computeVertexNormals();
+  scene.add(new THREE.Mesh(gg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .9, side: THREE.DoubleSide })));
 }
 
 function insideBuilding(x, z) {
@@ -923,6 +943,30 @@ const VENUES = [
     menu: [D_('Mojito', 'Rum, Minze, Limette', { alc: 10 }, 'cocktail', 0xc8ffb0), D_('Long Island Iced Tea', 'fünf Sorten Alkohol. Fünf.', { alc: 22 }, 'cocktail', 0x8a4a1a),
       D_('Espresso Martini', 'wach und betrunken', { alc: 10 }, 'cocktail', 0x2a140a), D_('Negroni', 'bitter, stark, Stil', { alc: 12 }, 'cocktail', 0xc0201a),
       D_('Passionfruit Martini', 'mit Prosecco-Shot', { alc: 12 }, 'cocktail', 0xffc040), D_('Whiskey pur', 'Single Malt', { alc: 9 }, 'shot', 0xb06a20)] },
+  { id: 'irish', name: "O'Rheily's Irish Pub", short: 'Irish Pub', xz: [3.3, 43.1], genre: 'irish', sign: "O'RHEILY'S", color: 0x2aff6a, theme: 'irish', room: [18, 14, 3.6],
+    host: { name: 'Siobhan, Bar', look: [0x0a3a1a, 0x111111, 0xb0401a], lines: {
+      sober: ['Céad míle fáilte! Was darf\'s sein?', 'Ein Stout? Braucht seine Zeit, Liebling.'],
+      tipsy: ['Na, jetzt wird\'s gemütlich.', 'Noch ein Pint?'],
+      drunk: ['Du singst ja schon mit. Gut so!', 'Ein Whiskey für die Seele?'],
+      wasted: ['Okay, Schätzchen, ein Wasser, und dann sehen wir weiter.', 'Du hast gerade "Sláinte" zum Spielautomaten gesagt.'] } },
+    menu: [D_('Stout (Pint)', 'schwarz, cremig, dauert', { alc: 9 }, 'beer', 0x120806), D_('Cider', 'Apfel, spritzig', { alc: 7 }, 'beer', 0xe0b040),
+      D_('Irish Whiskey', 'pur, mit Würde', { alc: 9 }, 'shot', 0xb06a20), D_('Irish Coffee', 'Kaffee, Whiskey, Sahne', { alc: 8 }, 'cocktail', 0x3a1a0a), D_('Wasser', 'aus dem Hahn', { alc: -4 }, 'water', 0xaaccff)] },
+  { id: 'karaoke', name: 'Kehlkopf Karaoke', short: 'Karaoke-Bar', xz: [22, 21.2], genre: 'karaoke', sign: 'KEHLKOPF', color: 0xff5ae0, theme: 'karaoke', room: [20, 16, 4],
+    host: { name: 'Dennis, Karaoke-Host', look: [0xff5ae0, 0x1a1a1a, 0xe0c060], lines: {
+      sober: ['Hey! Trau dich auf die Bühne, die Leute sind nett. Meistens.', 'Erst ein Mut-Shot, dann singen?'],
+      tipsy: ['Jetzt hast du die richtige Stimmung für die Bühne!', 'Ich seh doch, du willst singen.'],
+      drunk: ['Du bist bereit. Die Welt ist es nicht, aber du.', 'Der Ton ist egal, das Gefühl zählt!'],
+      wasted: ['Okay, Superstar, langsam von der Bühne runter.', 'Du hast gerade das Mikro geküsst. Respekt.'] } },
+    menu: [D_('Pils', 'vom Fass', { alc: 7 }, 'beer', 0xd9a531), D_('Prosecco', 'für die Diva in dir', { alc: 7 }, 'wine', 0xf0e0a0),
+      D_('Mut-Shot', 'Kräuterlikör, für die Bühne', { alc: 9 }, 'shot', 0x3a1a08), D_('Tequila', 'Salz, Zitrone, Bühne', { alc: 8 }, 'shot', 0xffe9a0), D_('Wasser', 'für die Stimme', { alc: -4 }, 'water', 0xaaccff)] },
+  { id: 'imbiss', name: 'Pommes Paradies', short: 'Imbiss', xz: [2.8, 60.7], genre: 'imbiss', sign: 'POMMES PARADIES', color: 0xffd23a, theme: 'imbiss', room: [12, 9, 3.2],
+    host: { name: 'Gülay, Imbiss', look: [0xeeeeee, 0x222222, 0x1a0a05], lines: {
+      sober: ['Was darf\'s sein, Schatz? Pommes sind frisch.', 'Döner mit allem? Kommt sofort.'],
+      tipsy: ['Na, Hunger gekriegt vom Trinken?', 'Currywurst hilft gegen alles.'],
+      drunk: ['Setz dich hin, iss was. Glaub mir.', 'Ich mach dir extra viel Soße.'],
+      wasted: ['Oh Mann. Pommes und Wasser. Keine Diskussion.', 'Du hast gerade die Ketchupflasche umarmt.'] } },
+    menu: [D_('Pommes rot-weiß', 'Mayo und Ketchup', { food: true }, 'food'), D_('Currywurst mit Pommes', 'scharf oder normal', { food: true }, 'food'),
+      D_('Döner mit allem', 'und scharf', { food: true }, 'food'), D_('Cola', 'eiskalt', { alc: 0 }, 'water', 0x2a1208), D_('Dose Bier', 'für den Weg', { alc: 7 }, 'beer', 0xd9a531)] },
 ];
 const BUEDCHEN = { name: 'Büdchen am Burgplatz', pos: [-140, -65], host: { name: 'Ali, Büdchen', lines: {
   sober: ['Na Chef, was brauchst du?', 'Alles da: Bier, Kippen, Chips.'], tipsy: ['Na, schon unterwegs gewesen?'],
@@ -935,7 +979,7 @@ const KALLE_POS = [-216, -20];
 // Tür an die nächste echte Hauswand setzen
 function placeVenueDoors() {
   for (const v of VENUES) {
-    const [x, z] = geo2xz(...v.at);
+    const [x, z] = v.xz || geo2xz(...v.at);
     const w = nearestWall(x, z, 30) || { x, z, nx: 0, nz: 1 };
     v.door = { x: w.x + w.nx * .06, z: w.z + w.nz * .06, nx: w.nx, nz: w.nz };
     v.outPos = [w.x + w.nx * 1.6, w.z + w.nz * 1.6];
@@ -958,6 +1002,18 @@ function placeOnWall(obj, d, y, along = 0) {
   obj.rotation.y = Math.atan2(d.nx, d.nz); scene.add(obj); return obj;
 }
 const doorLights = [], POI_DOORS = [];
+const bracketMat = new THREE.MeshStandardMaterial({ color: 0x15120e, roughness: .5, metalness: .6 });
+// Ausleger-Schild: ragt quer von der Wand in die Gasse, von beiden Seiten lesbar
+function hangingSign(w, word, col, along) {
+  const g = new THREE.Group(), t = signTexCache[word] || (signTexCache[word] = textTexture(word));
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(.05, .05, 1.1), bracketMat).translateZ(.55).translateY(.42));
+  const board = new THREE.Mesh(new THREE.BoxGeometry(.06, .62, .82), new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: .6 })); board.position.set(0, 0, .62); g.add(board);
+  for (const s of [-1, 1]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(.78, .4), new THREE.MeshBasicMaterial({ map: t, transparent: true, color: new THREE.Color(col).multiplyScalar(2.2), toneMapped: false, depthWrite: false }));
+    m.position.set(s * .035, 0, .62); m.rotation.y = s * Math.PI / 2; g.add(m);
+  }
+  placeOnWall(g, { x: w.x + w.nz * along, z: w.z - w.nx * along, nx: w.nx, nz: w.nz }, 3.9);
+}
 function buildFacadeDetails() {
   for (const v of VENUES) {
     placeOnWall(neonSign(v.sign, v.color, Math.min(4.6, .32 * v.sign.length + .8)), v.door, 3.4);
@@ -975,6 +1031,7 @@ function buildFacadeDetails() {
     POI_DOORS.push({ type, x: w.x + w.nx * 1.2, z: w.z + w.nz * 1.2 });
     const word = pick(WORDS[type], r), col = pick(COLS, r);
     placeOnWall(neonSign(word, col, .36 * word.length + .7, .7), { x: w.x + w.nx * .06, z: w.z + w.nz * .06, nx: w.nx, nz: w.nz }, 3.1 + r() * .5);
+    if (r() < .65) hangingSign(w, pick(['ALT', 'BIER', 'PUB', 'BAR', 'KNEIPE', 'SCHNAPS', 'PILS', 'WEIN'], r), col, (r() < .5 ? -1 : 1) * (2 + r() * 1.5));
     doorLights.push({ x: w.x + w.nx * 1.4, z: w.z + w.nz * 1.4, y: 3, color: new THREE.Color(col), k: 12 });
   }
   // Büdchen (Kiosk)
@@ -1119,21 +1176,24 @@ const IMAT = {
   tiles: new THREE.MeshStandardMaterial({ map: tileTexture(), roughness: .3 }),
   carpet: new THREE.MeshStandardMaterial({ color: 0x2a1a3a, roughness: 1 }),
   glass: new THREE.MeshStandardMaterial({ color: 0x88aacc, roughness: .05, metalness: .1, transparent: true, opacity: .35 }),
+  green: new THREE.MeshStandardMaterial({ map: TEX.plaster, color: 0x1f4a2c, roughness: .8 }),
+  whiteTiles: new THREE.MeshStandardMaterial({ map: tileTexture('#e8e8e4', '#f4f4f0'), roughness: .25 }),
 };
 const interiors = [];
 function buildInterior(v, idx) {
   const [W, Dp, H] = v.room, ox = 9000 + idx * 150, g = new THREE.Group(); g.position.set(ox, 0, 0);
   const solid = [], lights = [], spots = [], acts = [], anim = [];
+  const it_extra = {};
   const box = (w, h, d, mat, x, y, z, isSolid = false) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); g.add(m); if (isSolid) solid.push([x - w / 2, z - d / 2, x + w / 2, z + d / 2]); return m; };
   const plane = (w, h, mat, x, y, z, rx, ry) => { const pg = new THREE.PlaneGeometry(w, h), uv = pg.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 2.5, uv.getY(i) * h / 2.5); const m = new THREE.Mesh(pg, mat); m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, 0); g.add(m); return m; };
   const th = v.theme;
-  const floorM = { brauhaus: IMAT.woodDark, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.concrete, schlager: IMAT.tiles, chill: IMAT.carpet, shisha: IMAT.woodDark, cocktail: IMAT.woodDark }[th];
-  const wallM = { brauhaus: IMAT.plaster, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.brick, schlager: IMAT.plaster, chill: IMAT.velvet, shisha: IMAT.black, cocktail: IMAT.woodDark }[th];
+  const floorM = { brauhaus: IMAT.woodDark, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.concrete, schlager: IMAT.tiles, chill: IMAT.carpet, shisha: IMAT.woodDark, cocktail: IMAT.woodDark, irish: IMAT.woodDark, karaoke: IMAT.carpet, imbiss: IMAT.tiles }[th];
+  const wallM = { brauhaus: IMAT.plaster, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.brick, schlager: IMAT.plaster, chill: IMAT.velvet, shisha: IMAT.black, cocktail: IMAT.woodDark, irish: IMAT.green, karaoke: IMAT.black, imbiss: IMAT.whiteTiles }[th];
   plane(W, Dp, floorM, 0, 0, 0, -Math.PI / 2);
   plane(W, Dp, IMAT.black, 0, H, 0, Math.PI / 2);
   plane(W, H, wallM, 0, H / 2, -Dp / 2, 0, 0); plane(W, H, wallM, 0, H / 2, Dp / 2, 0, Math.PI);
   plane(Dp, H, wallM, -W / 2, H / 2, 0, 0, Math.PI / 2); plane(Dp, H, wallM, W / 2, H / 2, 0, 0, -Math.PI / 2);
-  if (th === 'brauhaus' || th === 'cocktail') box(W - .1, 1.2, .06, IMAT.woodDark, 0, .6, -Dp / 2 + .05);
+  if (th === 'brauhaus' || th === 'cocktail' || th === 'irish') box(W - .1, 1.2, .06, IMAT.woodDark, 0, .6, -Dp / 2 + .05);
   // Theke + Rückbuffet mit Flaschen
   const barW = Math.min(W * .55, 9), barZ = -Dp / 2 + 2;
   box(barW, 1.1, .8, th === 'cocktail' ? IMAT.black : IMAT.woodDark, 0, .55, barZ, true);
@@ -1237,9 +1297,56 @@ function buildInterior(v, idx) {
     }
     for (const y of [.15, H - .15]) for (const s of [-1, 1]) { box(.04, .04, Dp - .4, glowMat(y < 1 ? 0x38e8ff : 0xb07aff, 4), s * (W / 2 - .05), y, 0); box(W - .4, .04, .04, glowMat(y < 1 ? 0x38e8ff : 0xb07aff, 4), 0, y, s * (Dp / 2 - .05)); }
     grid(2, 3, -4, 4, -2, 5, (x, z, i) => L(x, H - .3, z, i % 2 ? 0x38e8ff : 0xb07aff, 16, 'breathe', { s: i }));
+  } else if (th === 'irish') {
+    // Nischen mit Lederbänken, Fässer als Tische, Dartscheibe, grüne Lampen
+    for (let i = 0; i < 3; i++) for (const s of [-1, 1]) {
+      const z = -1 + i * 3.2; sofa(s * (W / 2 - .6), z, s < 0 ? Math.PI / 2 : -Math.PI / 2, 2.4, IMAT.leather);
+      box(.9, .75, 1.4, IMAT.woodLight, s * (W / 2 - 1.75), .375, z, true);
+    }
+    for (const [x, z] of [[-2, 2], [2, 2], [0, 4.5]]) {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(.38, .38, 1.05, 14), IMAT.woodLight); b.position.set(x, .52, z); g.add(b); solid.push([x - .4, z - .4, x + .4, z + .4]);
+      for (let k = 0; k < 3; k++) { const a = k * 2.1 + x; spots.push({ mode: 'idle', x: x + Math.cos(a) * .8, z: z + Math.sin(a) * .8, ry: Math.atan2(-Math.cos(a), -Math.sin(a)) }); }
+    }
+    const dart = new THREE.Mesh(new THREE.CircleGeometry(.23, 24), new THREE.MeshStandardMaterial({ map: (() => { const [c, q] = makeCanvas(128); for (let r = 6; r > 0; r--) { q.fillStyle = r % 2 ? '#1a1a1a' : '#d8c8a0'; q.beginPath(); q.arc(64, 64, r * 10, 0, 7); q.fill(); } q.fillStyle = '#c02020'; q.beginPath(); q.arc(64, 64, 6, 0, 7); q.fill(); return toTex(c); })() }));
+    dart.position.set(W / 2 - .03, 1.75, -Dp / 2 + 3); dart.rotation.y = -Math.PI / 2; g.add(dart);
+    grid(3, 2, -5, 5, -1, 4, (x, z) => L(x, H - .5, z, 0x9aff7a, 6, 'flicker'));
+    grid(2, 1, -3, 3, 1, 1, (x, z) => L(x, H - .4, z, 0xffa860, 9, 'static'));
+    for (let i = 0; i < 6; i++) spots.push({ mode: 'idle', x: lerp(-barW / 2, barW / 2, rnd()), z: barZ + 1.3 + rnd(), ry: Math.PI + (rnd() - .5) });
+  } else if (th === 'karaoke') {
+    // Bühne an der linken Wand, Bildschirm mit Liedtext, Publikum guckt hin
+    const sx = -W / 2 + 2.2;
+    box(3.6, .4, 6, IMAT.woodDark, sx, .2, 1, false);
+    box(.05, .06, 6, glowMat(0xff5ae0, 4), sx + 1.8, .38, 1);
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(.015, .015, 1.5, 6), IMAT.metal); stand.position.set(sx + .7, 1.15, 1); g.add(stand);
+    const mic = new THREE.Mesh(new THREE.SphereGeometry(.045, 8, 6), IMAT.black); mic.position.set(sx + .7, 1.92, 1); g.add(mic);
+    const [sc, sg] = makeCanvas(512, 256), stex = new THREE.CanvasTexture(sc); stex.colorSpace = THREE.SRGBColorSpace;
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.1), new THREE.MeshBasicMaterial({ map: stex, toneMapped: false }));
+    screen.position.set(-W / 2 + .05, 2.4, 1); screen.rotation.y = Math.PI / 2; g.add(screen);
+    it_extra.screen = { c: sc, g: sg, tex: stex }; it_extra.stage = { x: sx + .3, z: 1, yaw: -Math.PI / 2, face: Math.PI / 2 };
+    acts.push({ x: sx + 1.6, z: 1, r: 2, label: 'Auf die Bühne: singen 🎤', act: () => startKaraoke() });
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) {
+      const x = -1 + i * 2.2, z = -2 + j * 5;
+      box(.8, .05, .8, IMAT.woodLight, x, .74, z); box(.08, .74, .08, IMAT.metal, x, .37, z, true);
+      for (const s of [-1, 1]) spots.push({ mode: 'idle', x: x + s * .7, z: z + .2, ry: -Math.PI / 2 + s * .3, watch: true });
+    }
+    for (let i = 0; i < 10; i++) spots.push({ mode: 'idle', x: lerp(-1.5, 3, rnd()), z: lerp(-3.5, 5.5, rnd()), ry: -Math.PI / 2 + (rnd() - .5) * .6, watch: true });
+    L(sx, H - .3, 1, 0xffffff, 26, 'static'); grid(3, 1, -2, 6, 1, 1, (x, z, i) => L(x, H - .3, z, [0xff5ae0, 0x38e8ff, 0xffe04a][i], 18, 'chase', { s: i }));
+    drawKaraokeScreen(it_extra.screen, null);
+  } else if (th === 'imbiss') {
+    // Theke mit Fritteuse, leuchtende Speisekarte, Stehtische
+    for (const x of [-2, 0, 2]) box(1.1, .3, .5, IMAT.metal, x, 1.3, -Dp / 2 + .3);
+    const [mc, mg] = makeCanvas(512, 160); mg.fillStyle = '#1a1208'; mg.fillRect(0, 0, 512, 160); mg.fillStyle = '#ffd23a'; mg.font = '800 30px system-ui';
+    ['Pommes rot-weiß ....... 3,50', 'Currywurst Pommes .... 6,90', 'Döner mit allem ....... 7,50'].forEach((t, i) => mg.fillText(t, 20, 45 + i * 45));
+    const menuB = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 1.4), new THREE.MeshBasicMaterial({ map: toTex(mc), toneMapped: false })); menuB.position.set(0, 2.5, -Dp / 2 + .06); g.add(menuB);
+    for (const x of [-3, 3]) {
+      box(.7, .05, .7, IMAT.metal, x, 1.08, 1.5); box(.06, 1.08, .06, IMAT.metal, x, .54, 1.5, true);
+      for (const s of [-1, 1]) spots.push({ mode: 'idle', x: x + s * .6, z: 1.5, ry: s < 0 ? Math.PI / 2 : -Math.PI / 2 });
+    }
+    for (let i = 0; i < 4; i++) spots.push({ mode: 'idle', x: -1.5 + i * 1, z: barZ + 1.5 + (i % 2) * .4, ry: Math.PI });
+    grid(2, 2, -3, 3, -2, 2.5, (x, z) => L(x, H - .2, z, 0xf0f4ff, 14, 'static'));
   }
   scene.add(g);
-  const it = { v, g, ox, W, Dp, H, solid, lights, spots, acts, anim, spawn: [ox, Dp / 2 - 3.2] };
+  const it = { v, g, ox, W, Dp, H, solid, lights, spots, acts, anim, spawn: [ox, Dp / 2 - 3.2], ...it_extra };
   v.interior = it; interiors.push(it); return it;
 }
 
@@ -1455,7 +1562,7 @@ class People {
     if (this.hidden) return;
     const dx = o.x - CAMPOS.x, dz = o.z - CAMPOS.z, d2 = dx * dx + dz * dz;
     if (!o.always) {
-      if (d2 > 300 * 300) return;
+      if (d2 > 300 * 300 || d2 < 1.1) return;   // ganz dicht vor der Kamera: ausblenden, sonst sieht man nur einen Hinterkopf
       if (d2 > 49 && (dx * CAMDIR.x + dz * CAMDIR.z) < -.3 * Math.sqrt(d2)) return;
     }
     animate(o, t);
@@ -1539,6 +1646,8 @@ function animate(o, t) {
     else if (act === 'film') { J[6] = -1.25; J[7] = -.45; J[9] = -.15; J[11] = -.05; }
     else if (act === 'lean') { J[12] = -.07; J[0] = .06; J[2] = -.12; J[3] = .28; J[4] = J[6] = .1; J[5] = J[7] = -.3; J[8] = J[9] = .15; }
     else if (act === 'counter') { J[4] = J[6] = -.75; J[5] = J[7] = -.75; J[8] = J[9] = .12; J[12] = .1; }
+    else if (act === 'sing') { const k = Math.sin(t * 2.2); J[6] = -.5; J[7] = -2.35; J[9] = -.25; J[4] = -1.1 - k * .3; J[5] = -.3; J[8] = .5 + k * .2; J[12] = -.05 + k * .03; J[11] = -.15; }
+    else if (act === 'guitar') { J[4] = -.95; J[5] = -1.1; J[8] = -.25; J[6] = -.25; J[7] = -1.15 + Math.sin(t * 10.5) * .2; J[9] = -.3; J[11] = .25 + Math.sin(t * 1.6) * .05; }
     else if (act === 'wave') { J[6] = -2.6; J[7] = -.4 + Math.sin(t * 9) * .4; J[9] = .3; }
   }
   // Gegenstand in der rechten Hand
@@ -1610,7 +1719,7 @@ function nextNode(n, prev) {
 }
 const street = new People(1500, 280), indoor = new People(130, 130), me = new People(1, 1);
 const STAND = [], SEATS = [];           // Plätze, an denen Leute stehen/sitzen (aus buildStreetProps)
-let RHEIN_BOX = null;
+let RHEIN_BOX = null, BUSKER = null;
 function initCrowd() {
   const r = mulberry32(5);
   const free = (x, z) => !insideBuilding(x, z) && !inRiver(x, z);
@@ -1672,6 +1781,44 @@ function initCrowd() {
     o.prop = r() < .45 ? PROP.bottle : r() < .3 ? PROP.cig : r() < .2 ? PROP.phone : 0; o.lounge = r() < .25;
   }
   if (RHEIN_BOX) group(RHEIN_BOX[0], RHEIN_BOX[1], 5, 2, 1.2);
+  // Straßenmusiker auf der Bolkerstraße
+  const bn = [...nodeGrid.around(-25, 42, 30)].filter(i => !GN[i].road).sort((a, b) => Math.hypot(GN[a].x + 25, GN[a].z - 42) - Math.hypot(GN[b].x + 25, GN[b].z - 42))[0];
+  if (bn !== undefined) {
+    const n = GN[bn], w = nearestWall(n.x, n.z, 10) || { x: n.x, z: n.z, nx: 0, nz: 1 };
+    const bx = w.x + w.nx * 1.2, bz = w.z + w.nz * 1.2, ry = Math.atan2(w.nx, w.nz);
+    const o = street.add({ mode: 'idle', act: 'guitar', x: bx, z: bz, ry, fixed: true, fem: false, busker: true });
+    o.col = [0x6a4a2a, 0x2a3a5a, o.col[2], 0x3a2414]; o.hair = 2; o.beard = 1; o.style[1] = .8; o.style[2] = 0; o.face = ry;
+    const gm = new THREE.MeshStandardMaterial({ color: 0x9a5a2a, roughness: .5 }), gd = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: .6 });
+    const gtr = new THREE.Group(); gtr.position.set(bx, 0, bz); gtr.rotation.y = ry;
+    const body = new THREE.Group(); body.position.set(-.02, 1.02, .2); body.rotation.z = -.95; gtr.add(body);
+    body.add(new THREE.Mesh(new THREE.CylinderGeometry(.19, .19, .09, 18).rotateX(Math.PI / 2), gm).translateY(-.12));
+    body.add(new THREE.Mesh(new THREE.CylinderGeometry(.15, .15, .09, 18).rotateX(Math.PI / 2), gm).translateY(.12));
+    body.add(new THREE.Mesh(new THREE.CylinderGeometry(.045, .045, .095, 12).rotateX(Math.PI / 2), gd).translateY(.04));
+    body.add(new THREE.Mesh(new THREE.BoxGeometry(.05, .55, .03), gd).translateY(.5));
+    const case_ = new THREE.Mesh(new THREE.BoxGeometry(1.0, .1, .38), gd); case_.position.set(bx + w.nx * 1.1, .05, bz + w.nz * 1.1); case_.rotation.y = ry + Math.PI / 2; scene.add(gtr, case_);
+    BUSKER = [bx, bz];
+    for (let k = 0; k < 7; k++) { const a = -1 + k * .33, d = 2.6 + r() * .8, x = bx + Math.sin(ry + a) * d, z = bz + Math.cos(ry + a) * d;
+      if (free(x, z)) { const f = street.add({ mode: 'idle', x, z, ry: Math.atan2(bx - x, bz - z), fixed: true }); f.act = pick(['listen', 'film', 'pockets', 'cheer'], r); f.face = f.ry; f.prop = f.act === 'film' ? PROP.phone : r() < .4 ? PROP.bottle : 0; } }
+  }
+  // Polizeistreife, Rosenverkäufer, Junggesellenabschied (laufen mit)
+  for (let k = 0; k < 2; k++) {
+    const nd = nodeNear(0, 30, 0, 200); if (nd === null) break;
+    const lead = setWalkerNew(nd); lead.prop = 0; lead.drunk = false; lead.speed = 1.05; lead.police = true;
+    const f = street.add({ x: lead.x, z: lead.z, ry: 0, mode: 'walk', lead, fo: [.7, -.1], speed: lead.speed, police: true, fem: r() < .4 });
+    for (const o of [lead, f]) { o.col = [0x1b2a44, 0x141a28, o.col[2], o.col[3]]; o.hair = 4; o.skirt = 0; o.prop = 0; o.style[1] = .8; o.style[2] = 0; o.style[0] = .97; o.shoe = 0; }
+  }
+  for (let k = 0; k < 2; k++) { const nd = nodeNear(0, 30, 0, 220); if (nd === null) break; const o = setWalkerNew(nd); o.rose = true; o.prop = 0; o.drunk = false; o.fem = false; o.col[0] = 0x2a2a2a; }
+  {
+    const nd = nodeNear(0, 30, 0, 150);
+    if (nd !== null) {
+      const lead = setWalkerNew(nd); lead.jga = true; lead.drunk = true; lead.speed = .95;
+      lead.fem = true; dress(lead, r); lead.col = [0xf4f4f4, 0xf4f4f4, lead.col[2], 0xe8e0d0]; lead.skirt = 1; lead.style[2] = 1.2; lead.hair = 2; lead.prop = PROP.bottle;
+      for (let k = 0; k < 6; k++) {
+        const f = street.add({ x: lead.x, z: lead.z, ry: 0, mode: 'walk', lead, fo: [(k % 2 ? -1 : 1) * (.6 + Math.floor(k / 2) * .25), -.6 - Math.floor(k / 2) * .7], speed: lead.speed, fem: true, jga: true });
+        f.col[0] = 0xff4a9a; f.drunk = true; f.prop = r() < .6 ? PROP.bottle : 0;
+      }
+    }
+  }
   // Spaziergänger, meist in Grüppchen
   while (street.list.length < street.n) {
     const nd = nodeNear(P.x, P.z, 0, 260) ?? nodeNear(0, 0, 0, 800); if (nd === null) break;
@@ -1695,7 +1842,7 @@ function updateStreetCrowd(dt, t, px, pz) {
   _pl[0] = px; _pl[1] = pz;
   let nearCnt = 0;
   for (const o of street.list) {
-    if (o.fixed) { if (o.mode === 'walk') o.phase += dt * 4.3; }
+    if (o.fixed || o.approach) { if (o.mode === 'walk' && o.fixed) o.phase += dt * 4.3; }
     else if (o.mode === 'walk' && !o.lead) {
       const A = GN[o.a], B = GN[o.b], L = Math.hypot(B.x - A.x, B.z - A.z) || .01;
       let sp = o.speed;
@@ -1720,6 +1867,11 @@ function updateStreetCrowd(dt, t, px, pz) {
     o.gy = onBridge(o.x, o.z) ? .35 : 0;
     // in der Nähe: zum Spieler gucken
     const pd = Math.hypot(o.x - px, o.z - pz);
+    if (o.rose) roseSeller(o, pd, dt, px, pz);
+    if (o.police && pd < 6 && (o.talkT || 0) < t && (SUB.alc.l > 60 || SUB.thc.l > 70)) {
+      o.talkT = t + 40; o.lookT = 4;
+      npcSay(o, SUB.alc.l > 60 ? pick(['Na, alles klar bei Ihnen? Nicht dass wir Sie nach Hause bringen müssen.', 'Langsam, junger Mann. Wir haben ein Auge auf Sie.', 'Trinken Sie mal ein Wasser, ja?']) : 'Hm. Riecht hier irgendwie... ach, egal. Schönen Abend.', 4.5);
+    }
     if (pd < 20) nearCnt++;
     o.look = (pd < 4.5 && (o.seed | 0) % 3 === 0) || o.lookT > 0 ? _pl : null; if (o.lookT > 0) o.lookT -= dt;
     street.pose(o, t);
@@ -1728,6 +1880,20 @@ function updateStreetCrowd(dt, t, px, pz) {
   street.flush();
   CROWD_NEAR = nearCnt;
 }
+// Rosenverkäufer: kommt auf dich zu, wenn du in der Nähe bist
+function roseSeller(o, pd, dt, px, pz) {
+  if (!o.approach && pd < 14 && (o.coolT || 0) < TIME.value && !GAME.inside) { o.approach = true; o.apT = 14; }
+  if (!o.approach) return;
+  o.apT -= dt;
+  if (pd > 1.5) { const dx = px - o.x, dz = pz - o.z; o.x += dx / pd * 1.25 * dt; o.z += dz / pd * 1.25 * dt; o.ry = Math.atan2(dx, dz); o.phase += dt * 5.2; o.mode = 'walk'; }
+  else { o.mode = 'idle'; o.act = 'wave'; o.ry = Math.atan2(px - o.x, pz - o.z); if (!o.offered) { o.offered = true; npcSay(o, pick(['Rose? Für die Freundin? Fünf Euro!', 'Schöne Rose, mein Freund? Für die Liebe!', 'Eine Rose, nur für dich, Chef!']), 4); } }
+  if (o.apT <= 0 || pd > 25 || o.bought) {
+    if (o.bought) npcSay(o, 'Danke, mein Freund! Viel Glück!', 3); else if (pd < 4) npcSay(o, 'Okay, okay. Schönen Abend!', 2.5);
+    o.approach = false; o.offered = false; o.bought = false; o.act = null; o.coolT = TIME.value + 90;
+    const nd = nodeNear(o.x, o.z, 0, 40); if (nd !== null) { setWalker(o, nd); o.d = 0; }
+  }
+}
+
 let CROWD_NEAR = 0;
 function npcExhale(o) {
   const s = Math.sin(o.ry), c = Math.cos(o.ry), y = o.gy + (o.mode === 'sit' ? o.y - .2 : 1.6) * o.scale;
@@ -1776,7 +1942,8 @@ hand.position.copy(HAND_REST);
 // =====================================================================
 const mf = m => 440 * Math.pow(2, (m - 69) / 12);
 const FOLDER_GENRE = { 'strasse': 'strasse', 'deutschrap-club': 'rap', 'chill-lounge': 'chill', '80er-kneipe': '80s', 'techno-keller': 'techno',
-  'schlager-bar': 'schlager', 'shisha-lounge': 'shisha', 'brauhaus': 'brauhaus', 'cocktailbar': 'lounge' };
+  'schlager-bar': 'schlager', 'shisha-lounge': 'shisha', 'brauhaus': 'brauhaus', 'cocktailbar': 'lounge',
+  'irish-pub': 'irish', 'karaoke-bar': 'karaoke', 'imbiss': 'imbiss', 'strassenmusik': 'busker' };
 const FILES = {};
 
 class Synth {
@@ -1843,6 +2010,10 @@ const GEN = {
     chords: [[41, [65, 69, 72]], [46, [65, 70, 74]], [48, [64, 67, 72]], [41, [65, 69, 72]]], scale: [65, 67, 69, 70, 72, 74, 76, 77] },
   shisha: { title: 'Habibi Cloud · Arabic Chill', bpm: 92, swing: .54,
     chords: [[38, [62, 69, 74]]], scale: [62, 63, 66, 67, 69, 70, 72, 74] },
+  irish: { title: "O'Rheily's · Irish Folk", bpm: 116, swing: .56,
+    chords: [[38, [62, 66, 69]], [43, [62, 67, 71]], [45, [61, 64, 69]], [47, [62, 66, 71]]], scale: [74, 76, 78, 79, 81, 83, 85, 86] },
+  busker: { title: 'Straßenmusiker · Akustik-Gitarre', bpm: 96, swing: .58,
+    chords: [[43, [55, 59, 62, 67, 71]], [38, [54, 57, 62, 66, 69]], [40, [52, 55, 59, 64, 67]], [36, [52, 55, 60, 64, 67]]], scale: [67, 69, 71, 74, 76, 79] },
   brauhaus: { title: 'Brauhaus · Kneipen-Stimmung', bpm: 112, swing: .5,
     chords: [[41, [65, 69, 72]], [48, [64, 67, 70]], [48, [64, 67, 72]], [41, [65, 69, 72]]], scale: [65, 67, 69, 70, 72, 74, 76] },
 };
@@ -1920,6 +2091,22 @@ const PATTERN = {
       S.pluck(o, t, f, .06, 2800); if (G.h(bar, st) < .2) S.pluck(o, t + sd * .5, f * 1.06, .03, 2400);
     }
   },
+  irish(G, st, bar, t, sd, S) {
+    const o = G.o, [r, n] = G.chord(bar), g = G.g;
+    if (st % 4 === 0) S.dum(o, t, .45); if (st % 4 === 2) S.tek(o, t, .18);
+    if (st === 0 || st === 8) S.bass(o, t, mf(r), sd * 3, .2, 500);
+    if (st % 4 === 2) S.chord(o, t, n, sd * 1.3, 'accordion', .02);
+    if (st % 2 === 0) { const f = mf(pickH(g.scale, G.h(bar % 4, st + 11))); S.tone(o, t, f, sd * 1.7, { type: 'sawtooth', v: .022, a: .02, r: .08, lp: 2600 }); }
+  },
+  busker(G, st, bar, t, sd, S) {
+    const o = G.o, [r, n] = G.chord(bar), g = G.g;
+    if ([0, 3, 4, 6, 10, 11, 12, 14].includes(st)) {   // Strumming: runter/hoch
+      const up = st % 4 === 3 || st % 4 === 2 && st > 4, list = up ? [...n].reverse().slice(0, 3) : n;
+      list.forEach((m, k) => S.pluck(o, t + k * .011, mf(m), st % 4 === 0 ? .05 : .03, 2600));
+    }
+    if (st === 0 || st === 8) S.bass(o, t, mf(r), sd * 4, .12, 400);
+    if (st % 4 === 0 && G.h(bar % 4, st) < .35) S.tone(o, t + sd, mf(pickH(g.scale, G.h(bar % 4, st + 5))), sd * 2.5, { v: .025, a: .04, r: .2 });
+  },
   brauhaus(G, st, bar, t, sd, S) {
     const o = G.o, [r, n] = G.chord(bar), g = G.g;
     if (st % 8 === 0) S.bass(o, t, mf(r), sd * 2, .2, 600);
@@ -1929,6 +2116,9 @@ const PATTERN = {
     if (st % 4 === 0) S.nz(o, t, .05, 'bandpass', 900, 1, .05);
   },
 };
+
+GEN.karaoke = { ...GEN['80s'], title: 'Kehlkopf · Karaoke-Hits' }; PATTERN.karaoke = PATTERN['80s'];
+GEN.imbiss = { ...GEN.strasse, title: 'Pommes Paradies · Imbiss-Radio' }; PATTERN.imbiss = PATTERN.chill;
 
 class Groove {
   constructor(genre, out) { this.genre = genre; this.g = GEN[genre]; this.o = out; this.seed = Math.random() * 1000; this.step = 0; this.next = 0; this.timer = null; }
@@ -2004,6 +2194,7 @@ const Sound = {
     const r = mulberry32(31), G = [['lounge', 'chill', '80s'], ['brauhaus', 'schlager', '80s', 'brauhaus'], ['rap', 'techno', '80s', 'schlager']];
     for (const p of POI_DOORS) this.channels.push(new Channel(pick(G[p.type], r), [p.x, p.z], p.type === 2 ? 1.2 : .8));
     if (RHEIN_BOX) this.channels.push(new Channel('rap', RHEIN_BOX, .75));   // Musikbox am Rheinufer
+    if (BUSKER) this.channels.push(new Channel('busker', BUSKER, 1.1));
     this.ready = true;
   },
   setFiles(list) {
@@ -2213,12 +2404,13 @@ function cameraClearance() {
 const ME = me.add({ x: 0, z: 0, ry: 0, mode: 'idle', always: true, fem: false, manual: true, scale: 1, wide: 1.04 });
 ME.col = [0x1d2230, 0x2b3a58, 0xd9a07a, 0x1a120c]; ME.hair = 1; ME.beard = 1; ME.skirt = 0; ME.shoe = 1; ME.style = [.97, .8, 0, 0];
 function updateAvatar(dt, t) {
-  if (!CAM.third) { me.flush(); return; }
+  if (!CAM.third || CAM.off.z * CAM.k < 1.1) { me.flush(); return; }   // Ego-Sicht oder Kamera zu dicht dran
   const o = ME, a = HAND.cur;
   o.x = P.x; o.z = P.z; o.gy = P.gy; o.ry = P.face; o.drunk = FX.alc > .4;
   if (P.speed > .35) { o.mode = 'walk'; o.phase += P.moved * 4.2; o.stride = clamp(P.speed / 3, .55, 1.35); }
   else { o.mode = 'idle'; o.act = SUB.alc.l > 70 ? 'lean' : null; }
   o.prop = 0; o.sipK = -1;
+  if (KARAOKE.on) { o.mode = 'idle'; o.act = 'sing'; }
   if (a) { o.prop = a.item === 'glass' ? PROP.glass : a.item === 'hose' ? PROP.hose : PROP.cig; o.sipK = clamp(a.t / a.dur, 0, .999); }
   // Kopf guckt dahin, wo die Kamera hinschaut
   euler.setFromQuaternion(head.quaternion, 'YXZ');
@@ -2263,7 +2455,7 @@ function updatePlayer(dt, t) {
   if (CAM.third) {
     const kk = cameraClearance();
     CAM.k = kk < CAM.k ? kk : lerp(CAM.k, kk, 1 - Math.exp(-dt * 2.5));
-    camera.position.set(CAM.off.x * CAM.k + sx, CAM.off.y * CAM.k + sy * .5, CAM.off.z * CAM.k);
+    camera.position.set(CAM.off.x * CAM.k + sx, CAM.off.y + (1 - CAM.k) * .35 + sy * .5, CAM.off.z * CAM.k);
   } else camera.position.set(sx, sy, 0);
   camera.rotation.set(wobble(t * .5, 9) * .05 * sway, 0, wobble(t * .6, 2) * .11 * sway + P.tilt);
   const fov = (CAM.third ? 66 : 72) + FX.thc * Math.sin(t * .6) * 3.5 + wobble(t * .4, 4) * 3 * FX.alc;
@@ -2376,7 +2568,9 @@ function currentAct() {
   let best = null, bd = 1e9;
   const list = GAME.inside ? GAME.inside.interior.acts.map(a => ({ ...a, x: a.x + GAME.inside.interior.ox })) : OUTSIDE_ACTS;
   for (const a of list) { const d = Math.hypot(a.x - P.x, a.z - P.z); if (d < a.r && d < bd) { bd = d; best = a; } }
-  if (!best) { const o = nearestPerson(); if (o) best = { label: o.bouncer ? 'Türsteher ansprechen' : 'Ansprechen', act: () => talkTo(o) }; }
+  if (KARAOKE.on && best && best.label.startsWith('Auf die Bühne')) best = null;
+  if (!best) { const o = nearestPerson(); if (o) best = o.rose && o.approach ? { label: 'Rose kaufen 🌹', act: () => { o.bought = true; thought(pick(['Eine Rose. Für wen eigentlich?', 'Die schenk ich Kalle.', 'Romantisch. Glaub ich.'])); } }
+    : { label: o.bouncer ? 'Türsteher ansprechen' : o.police ? 'Polizei ansprechen' : 'Ansprechen', act: () => talkTo(o) }; }
   return best;
 }
 function fadeThen(cb, speed = 3) { GAME.fadeTo = 1; GAME.fadeSpeed = speed; GAME.fadeCb = cb; }
@@ -2401,7 +2595,7 @@ function leaveVenue(instant = false) {
   };
   Sound.door(); if (instant) go(); else fadeThen(go);
 }
-const HAZE = { brauhaus: [0x1a120a, .016], rap: [0x220606, .04], eighties: [0x160516, .022], techno: [0x05081a, .045], schlager: [0x181008, .012], chill: [0x120a18, .025], shisha: [0x0c1a22, .03], cocktail: [0x05101a, .018] };
+const HAZE = { irish: [0x10120a, .02], karaoke: [0x140814, .022], imbiss: [0x101010, .006], brauhaus: [0x1a120a, .016], rap: [0x220606, .04], eighties: [0x160516, .022], techno: [0x05081a, .045], schlager: [0x181008, .012], chill: [0x120a18, .025], shisha: [0x0c1a22, .03], cocktail: [0x05101a, .018] };
 function setupIndoorCrowd(v) {
   const it = v.interior; indoor.list.length = 0;
   const spots = [...it.spots].sort(() => Math.random() - .5).sort((a, b) => (b.host ? 1 : 0) - (a.host ? 1 : 0) || (b.koebes ? 1 : 0) - (a.koebes ? 1 : 0));
@@ -2415,6 +2609,7 @@ function setupIndoorCrowd(v) {
       o.prop = k < .55 ? drinkProp : k < .65 && v.theme !== 'shisha' ? PROP.cig : k < .75 ? PROP.phone : 0;
       if (v.club && o.mode === 'dance' && Math.random() < .12) o.act = 'film';
     }
+    if (s.watch) { o.act = pick(['listen', 'cheer', 'film', 'pockets', 'listen']); o.face = -Math.PI / 2; }
     if (s.mode === 'roam') { o.tx = o.x; o.tz = o.z; o.speed = 1.2; }
     if (o.mode === 'sit') o.lounge = v.theme === 'chill' || v.theme === 'shisha' ? Math.random() < .6 : false;
   }
@@ -2454,6 +2649,8 @@ const CHAT = {
   aboutHigh: ['Riechst du das auch?', 'Der grinst so komisch.', 'Boah, hier riecht\'s nach Kalle.'],
   bump: ['Ey, pass doch auf!', 'Junge, guck wo du hinläufst!', 'Sorry!', 'Hey! Mein Bier!', 'Alles gut, alles gut.', 'Hast du keine Augen im Kopf?', 'Upsi.', 'Drängel nicht so!'],
   bouncer: ['Abstand, Freundchen.', 'Hier wird nicht gedrängelt.', 'Hinten anstellen.'],
+  jga: ['JGA! JGA! JGA!', 'Die Braut gibt einen aus!', 'Noch einen Schnaps für die Braut!', 'Wer will ein Foto mit der Braut?', 'Ein Kuss für fünf Euro!'],
+  police: ['Guten Abend. Alles friedlich hier?', 'Bitte nicht auf der Straße urinieren, ja?', 'Schönen Abend noch.'],
   talk: ['Was geht?', 'Prost, Fremder!', 'Kennen wir uns?', 'Willst du mit ins Bunker?', 'Geh mal zu Kalle am Rhein, der hat was für dich.',
     'Das Brauhaus da vorne hat das beste Alt.', 'Lass mich, ich telefonier gerade.', 'Heute ist die Altstadt komplett eskaliert, oder?', 'Bist du auch beim JGA dabei?',
     'Im Keller 47 legt heute einer auf, brutal.', 'Hast du \'ne Kippe für mich?', 'Ich kenn dich! ... Nee, doch nicht.'],
@@ -2491,7 +2688,7 @@ function updateBubbles(dt) {
   }
   if (!cand.length) return;
   const o = pick(cand), pd = Math.hypot(o.x - P.x, o.z - P.z);
-  let pool = o.drunk ? CHAT.drunk : CHAT.general;
+  let pool = o.jga ? CHAT.jga : o.police ? CHAT.police : o.busker ? ['Danke, danke! Nächster Song!', 'Wünsche? Wonderwall geht nicht, sorry.'] : o.drunk ? CHAT.drunk : CHAT.general;
   if (pd < 9 && SUB.alc.l > 55 && Math.random() < .5) { pool = CHAT.aboutDrunk; o.lookT = 3; }
   else if (pd < 9 && SUB.thc.l > 45 && Math.random() < .4) { pool = CHAT.aboutHigh; o.lookT = 3; }
   npcSay(o, pick(pool));
@@ -2521,7 +2718,73 @@ function talkTo(o) {
     setTimeout(() => drink({ alc: 4, kind: 'beer', col: 0x5a2a0a }), 900);
     return;
   }
+  if (o.police) { npcSay(o, drunk ? 'Ganz ruhig. Wir wollen keinen Ärger, und Sie auch nicht, oder?' : pick(CHAT.police), 4); return; }
+  if (o.busker) { npcSay(o, pick(['Danke fürs Zuhören! Ein Euro wär super.', 'Noch ein Lied? Klar!']), 4); return; }
+  if (o.jga) { npcSay(o, pick(['Komm, trink einen mit der Braut!', 'JGA, Baby! Du bist jetzt dabei!']), 4); setTimeout(() => drink({ alc: 6, kind: 'shot', col: 0xff4a7a }), 900); return; }
   npcSay(o, pick(drunk && Math.random() < .5 ? CHAT.talkDrunk : CHAT.talk), 4);
+}
+
+// =====================================================================
+//  Karaoke im Kehlkopf (mit Mikro wird bewertet, wie viel du wirklich singst)
+// =====================================================================
+const SONGS = [
+  { title: 'Altbier im Herzen', lines: ['Ich steh am Rhein, die Nacht ist jung,', 'ein Alt in der Hand und ich hab Schwung.', 'Die Lichter glüh\'n auf der Bolkerstraß\',', 'komm, sing mit mir, wir haben Spaß!',
+    'Oh-oh, Altbier im Herzen,', 'oh-oh, bis morgen früh um vier,', 'oh-oh, vergiss die Schmerzen,', 'Düsseldorf, wir sind noch hier!'] },
+  { title: 'Köbes, noch eins', lines: ['Der Köbes kommt, er fragt nicht lang,', 'er stellt nur hin, mir wird nicht bang.', 'Der Deckel voll, die Kehle frei,', 'noch eins, noch eins, ich bin dabei!',
+    'Köbes, noch eins! Köbes, noch eins!', 'Die Nacht ist lang und das Glas ist klein!', 'Köbes, noch eins! Köbes, noch eins!', 'Heut geh ich erst mit der Sonne heim!'] },
+  { title: 'Neonlicht-Romanze', lines: ['Unter Neonlicht hab ich dich gesehen,', 'zwischen Discokugel und Zigarettenrauch.', 'Du hast gelacht, ich konnt\' kaum stehen,', 'Schmetterlinge, oder Bier im Bauch?',
+    'Neonlicht, Neonlicht,', 'verlass mich heute Nacht noch nicht!', 'Neonlicht, Neonlicht,', 'ein Kuss, ein Tanz, und dann ein Gedicht!'] },
+];
+const KARAOKE = { on: false, line: -1 };
+function drawKaraokeScreen(sc, song, i = -1) {
+  const g = sc.g; g.fillStyle = '#0a0418'; g.fillRect(0, 0, 512, 256); g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (!song) { g.fillStyle = '#ff5ae0'; g.font = '900 46px system-ui'; g.fillText('KEHLKOPF', 256, 95); g.fillStyle = '#fff'; g.font = '600 26px system-ui'; g.fillText('Trau dich auf die Bühne!', 256, 160); }
+  else {
+    g.fillStyle = '#ff5ae0'; g.font = '800 22px system-ui'; g.fillText('♪ ' + song.title + ' ♪', 256, 34);
+    for (let k = -1; k <= 1; k++) { const t = song.lines[i + k]; if (!t) continue; g.fillStyle = k ? '#8a80a0' : '#ffe04a'; g.font = (k ? '600 20px' : '800 26px') + ' system-ui'; g.fillText(t, 256, 130 + k * 52, 490); }
+  }
+  sc.tex.needsUpdate = true;
+}
+function startKaraoke() {
+  if (KARAOKE.on || !GAME.inside || !GAME.inside.interior.stage) return;
+  const it = GAME.inside.interior, st = it.stage, song = pick(SONGS);
+  Object.assign(KARAOKE, { on: true, t: 0, dur: song.lines.length * 3.8, song, sung: 0, line: -1, cheerT: 3 });
+  P.x = it.ox + st.x; P.z = st.z; P.vx = P.vz = 0; P.face = st.face; setYaw(st.yaw);
+  showMsg(`🎤 <b>${song.title}</b>: ${MIC.on ? 'Sing ins Mikro, laut und deutlich!' : 'Mikro ist aus, du singst trotzdem. Irgendwie.'}`, 4);
+  for (const o of indoor.list) if (!o.host) o.lookT = KARAOKE.dur + 3;
+  $('karaoke').style.display = 'block';
+}
+function updateKaraoke(dt) {
+  if (!KARAOKE.on) return;
+  const it = GAME.inside && GAME.inside.interior;
+  if (!it || !it.stage || Math.hypot(P.x - it.ox - it.stage.x, P.z - it.stage.z) > 3.5) { endKaraoke(true); return; }
+  KARAOKE.t += dt;
+  if (MIC.on) KARAOKE.sung += MIC.state === 'reden' ? dt : MIC.state === 'schreien' ? dt * .7 : MIC.state === 'flüstern' ? dt * .3 : 0;
+  else KARAOKE.sung += dt * (.5 + Math.random() * .4);
+  const i = Math.min(KARAOKE.song.lines.length - 1, Math.floor(KARAOKE.t / 3.8));
+  if (i !== KARAOKE.line) {
+    KARAOKE.line = i; drawKaraokeScreen(it.screen, KARAOKE.song, i);
+    const L = KARAOKE.song.lines;
+    $('karaoke').innerHTML = `<div class="kt">♪ ${KARAOKE.song.title}</div><div class="kl">${slur(L[i])}</div><div class="kn">${L[i + 1] || ''}</div>`;
+  }
+  if ((KARAOKE.cheerT -= dt) <= 0) {
+    KARAOKE.cheerT = 2.5 + Math.random() * 3;
+    const fans = indoor.list.filter(o => !o.host);
+    if (fans.length) npcSay(pick(fans), pick(MIC.on && MIC.state === 'still' ? ['Sing doch!', 'Hallo? Mikro an?', 'Lauter!'] : ['Jaaa!', 'Wooo!', 'Schief, aber geil!', 'Du bist ein Star!', 'Lauter!', 'Haha, Legende!']), 2.2);
+  }
+  if (KARAOKE.t >= KARAOKE.dur) endKaraoke(false);
+}
+function endKaraoke(abort) {
+  KARAOKE.on = false; $('karaoke').style.display = 'none';
+  const it = GAME.inside && GAME.inside.interior; if (it && it.screen) drawKaraokeScreen(it.screen, null);
+  if (abort) { if (GAME.inside) showMsg('Du bist von der Bühne geflüchtet. Buh!', 3); return; }
+  const score = Math.round(clamp(30 + KARAOKE.sung / KARAOKE.dur * 65 - FX.alc * 12 + Math.random() * 10, 5, 100));
+  for (const o of indoor.list) if (!o.host && Math.random() < .6) { o.prevAct = o.prevAct || o.act; o.act = 'cheer'; o.cheerT = 4; }
+  showMsg(`👏 Applaus! <b>${score} von 100 Punkten</b>`, 6);
+  const host = GAME.inside.host;
+  if (score >= 85) { say(host.name, 'Wahnsinn! Der nächste Mut-Shot geht aufs Haus!', 5); setTimeout(() => drink({ alc: 9, kind: 'shot', col: 0x3a1a08 }), 1500); }
+  else if (score >= 55) say(host.name, 'Na also! Das war doch richtig gut!', 5);
+  else say(host.name, 'Mutig. Sehr... mutig. Applaus trotzdem!', 5);
 }
 
 // =====================================================================
@@ -3098,7 +3361,7 @@ function frame() {
   sky.position.copy(head.position);
   water.material.uniforms.time.value += dt * .35;
   Sound.update(dt, t);
-  updateHUD(dt); updateBubbles(dt); updateMic(dt); updateNav(dt, t);
+  updateHUD(dt); updateBubbles(dt); updateMic(dt); updateKaraoke(dt); updateNav(dt, t);
   euler.setFromQuaternion(head.quaternion, 'YXZ'); drawMinimap(euler.y);
   if (GAME.mapOpen) drawBigMap();
   const u = fxPass.uniforms;
@@ -3109,7 +3372,7 @@ function frame() {
   composer.render();
 }
 frame();
-window.__game = { MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
+window.__game = { startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
 </script>
 </body>
 </html>

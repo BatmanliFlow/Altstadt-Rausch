@@ -9,6 +9,10 @@ Hier kommen deine eigenen Songs rein (MP3, M4A, OGG, WAV, FLAC).
   shisha-lounge/    Habibi Cloud
   brauhaus/         Brauhaus Zum Durstigen Köbes
   cocktailbar/      Blue Lagoon
+  irish-pub/        O'Rheily's Irish Pub
+  karaoke-bar/      Kehlkopf Karaoke (Songs zum Mitsingen)
+  imbiss/           Pommes Paradies (Radio)
+  strassenmusik/    der Straßenmusiker auf der Bolkerstraße (z. B. Akustik-Gitarre)
 
 Im Startbildschirm auf "Musik-Ordner wählen" klicken und diesen Ordner "musik" auswählen.
 Leere Ordner sind okay: Dort laufen dann die eingebauten, generierten Beats.
