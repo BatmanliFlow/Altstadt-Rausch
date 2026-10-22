@@ -1,0 +1,9 @@
+# Eigene Songs bleiben nur lokal auf deinem Rechner
+musik/**/*.mp3
+musik/**/*.m4a
+musik/**/*.ogg
+musik/**/*.wav
+musik/**/*.aac
+musik/**/*.flac
+musik/**/*.opus
+*.osm

@@ -1,0 +1,15 @@
+Hier kommen deine eigenen Songs rein (MP3, M4A, OGG, WAV, FLAC).
+
+  strasse/          Kopfhörer-Musik beim Rumlaufen (z. B. Deutschrap-Chill)
+  deutschrap-club/  Bunker 211
+  chill-lounge/     Wolke 7
+  80er-kneipe/      Neonlicht
+  techno-keller/    Keller 47
+  schlager-bar/     Schlagerhölle
+  shisha-lounge/    Habibi Cloud
+  brauhaus/         Brauhaus Zum Durstigen Köbes
+  cocktailbar/      Blue Lagoon
+
+Im Startbildschirm auf "Musik-Ordner wählen" klicken und diesen Ordner "musik" auswählen.
+Leere Ordner sind okay: Dort laufen dann die eingebauten, generierten Beats.
+Die Songs bleiben nur auf deinem Rechner und werden nicht ins Git hochgeladen.
