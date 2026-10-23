@@ -133,6 +133,7 @@
       <b>Maus</b><span>Umschauen</span>
       <b>E</b><span>Reingehen, bestellen, quatschen</span>
       <b>1–9 / Mausrad</b><span>Im Menü auswählen</span>
+      <b>I</b><span>Tasche: Pilze, Pappe, Teile, Koks, Lachgas (wenn du welche hast)</span>
       <b>J</b><span>Zug vom Joint (gibt's bei Kalle am Rhein)</span>
       <b>K</b><span>Zug von der Kippe</span>
       <b>F</b><span>Shisha-Zug / Alt vom Köbes nehmen</span>
@@ -166,7 +167,7 @@
   <div id="karaoke"></div>
   <div id="talkbox"></div>
   <div id="micbox"><div id="micst">🎤</div><div class="track"><div id="micbar"></div></div></div>
-  <div id="hint">T halten: reden · Enter: tippen · Tab Karte · V Kamera · M Musik · N nächster Track · J Joint · K Kippe</div>
+  <div id="hint">T halten: reden · Enter: tippen · I Tasche · Tab Karte · V Kamera · M Musik · N nächster Track · J Joint · K Kippe</div>
 </div>
 <div id="bigmap">
   <canvas id="mapc"></canvas>
@@ -193,6 +194,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { Water } from 'three/addons/objects/Water.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -775,8 +777,8 @@ function buildSky() {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     vertexShader: 'varying vec3 vD; void main(){ vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    uniforms: { uDawn: DAWN },
-    fragmentShader: `varying vec3 vD; uniform float uDawn;
+    uniforms: { uDawn: DAWN, uTrip: TRIP, uTime: TIME },
+    fragmentShader: `varying vec3 vD; uniform float uDawn, uTrip, uTime;
       void main(){ vec3 d = normalize(vD); float h = d.y;
         vec3 zen = mix(vec3(0.004,0.006,0.02), vec3(0.12,0.2,0.42), uDawn), hor = mix(vec3(0.07,0.055,0.08), vec3(0.85,0.5,0.32), uDawn), glow = mix(vec3(0.32,0.16,0.08), vec3(1.0,0.45,0.2), uDawn);
         vec3 c = mix(hor, zen, smoothstep(0.0, 0.45, h)) + glow * exp(-max(h,0.0) * 12.0) * 0.55;
@@ -785,6 +787,7 @@ function buildSky() {
         c += step(0.9982, s) * smoothstep(0.08, 0.35, h) * vec3(0.8, 0.85, 1.0) * (0.5 + 0.5 * fract(s * 91.0)) * (1.0 - uDawn);
         vec3 md = normalize(vec3(-0.5, 0.45, -0.6)); float m = dot(d, md);
         c += vec3(0.8,0.82,0.9) * smoothstep(0.99985, 0.99992, m) + vec3(0.12,0.15,0.24) * pow(max(m,0.0), 900.0);
+        c += uTrip * 0.09 * (0.5 + 0.5 * sin(vec3(0.0, 2.1, 4.2) + d.x * 5.0 + d.z * 3.0 + uTime * 0.6)) * smoothstep(-0.05, 0.4, h);
         gl_FragColor = vec4(c, 1.0); }`,
   });
   const sky = new THREE.Mesh(new THREE.SphereGeometry(4000, 32, 16), mat);
@@ -1055,7 +1058,7 @@ const BUEDCHEN = { name: 'Büdchen am Burgplatz', pos: [-140, -65], host: { name
   drunk: ['Chef, du schwankst. Pommes gibt\'s hier nich, aber Chips!'], wasted: ['Setz dich mal hin, Chef. Nimm Wasser.'] } },
   menu: [D_('Dose Pils', 'kalt aus dem Kühlschrank', { alc: 7 }, 'beer', 0xd9a531), D_('Flachmann Korn', 'für unterwegs', { alc: 10 }, 'shot', 0xeeeeee),
     D_('Schachtel Kippen', 'Nachschub', { cigs: true }, 'item'), D_('Chips Paprika', 'gegen den Fressflash', { food: true }, 'food'),
-    D_('Schokoriegel', 'Zucker!', { food: true }, 'food'), D_('Wasser', 'eiskalt', { alc: -4 }, 'water', 0xaaccff)] };
+    D_('Schokoriegel', 'Zucker!', { food: true }, 'food'), D_('Lachgas-Ballons', 'drei Stück, lila', { stuff: 'ballon', cnt: 3 }, 'item'), D_('Wasser', 'eiskalt', { alc: -4 }, 'water', 0xaaccff)] };
 const KALLE_POS = [-216, -20];
 
 // Tür an die nächste echte Hauswand setzen
@@ -1658,13 +1661,18 @@ vec3 bodyColor(out float glow){
   c *= 0.6 + 0.4 * smoothstep(0.0, 1.45, y);
   return c;
 }`;
+const TRIP = { value: 0 };
 const PEOPLE_MAT = new THREE.MeshStandardMaterial({ roughness: .8, metalness: 0 });
 PEOPLE_MAT.onBeforeCompile = sh => {
   sh.vertexShader = PEOPLE_VS + '\n' + sh.vertexShader
     .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n  vec3 jPos; mat3 jR; bodyPose(jPos, jR); objectNormal = jR * objectNormal;')
     .replace('#include <begin_vertex>', 'vec3 transformed = jPos;');
-  sh.fragmentShader = PEOPLE_FS + '\n' + sh.fragmentShader
-    .replace('#include <color_fragment>', '#include <color_fragment>\n  float bGlow; vec3 bCol = bodyColor(bGlow); diffuseColor.rgb *= bCol;')
+  sh.uniforms.uTrip = TRIP; sh.uniforms.uTime = TIME;
+  sh.fragmentShader = 'uniform float uTrip, uTime;\n' + PEOPLE_FS + '\n' + sh.fragmentShader
+    .replace('#include <color_fragment>', `#include <color_fragment>
+  float bGlow; vec3 bCol = bodyColor(bGlow);
+  if (uTrip > 0.01) { float a = uTrip * (vY * 4.0 + uTime * 1.5); vec3 k = vec3(0.57735); vec3 hc = bCol * cos(a) + cross(k, bCol) * sin(a) + k * dot(k, bCol) * (1.0 - cos(a)); bCol = mix(bCol, max(hc, 0.0) * 1.4, uTrip); bGlow += uTrip * 0.25; }
+  diffuseColor.rgb *= bCol;`)
     .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += bCol * bGlow;');
 };
 
@@ -1932,7 +1940,7 @@ function nextNode(n, prev) {
 }
 const street = new People(1500, 280), indoor = new People(130, 130), me = new People(1, 1);
 const STAND = [], SEATS = [];           // Plätze, an denen Leute stehen/sitzen (aus buildStreetProps)
-let RHEIN_BOX = null, BUSKER = null;
+let RHEIN_BOX = null, BUSKER = null, RONNY = null;
 function initCrowd() {
   const r = mulberry32(5);
   const free = (x, z) => !insideBuilding(x, z) && !inRiver(x, z);
@@ -1982,6 +1990,10 @@ function initCrowd() {
       if (free(x, z)) group(x, z, 4, 1);
     }
   }
+  // Ronny in der Mertensgasse (erfunden): hat Pappe, Teile und Koks
+  { const mg = centroid('Mertensgasse') || [40, -60], w = nearestWall(mg[0], mg[1], 12) || { x: mg[0], z: mg[1], nx: 1, nz: 0 };
+    const o = street.add({ mode: 'idle', act: 'lean', x: w.x + w.nx * .45, z: w.z + w.nz * .45, ry: Math.atan2(w.nx, w.nz), fixed: true, dealer: true, fem: false, always: true, prop: PROP.cig });
+    o.col = [0x1a1a1e, 0x23262e, o.col[2], 0x0a0a0a]; o.hair = 4; o.beard = 1; o.style[1] = .8; o.style[2] = 0; o.face = o.ry; RONNY = o; }
   // Kalle auf der Bank
   const kalle = street.add({ mode: 'sit', x: KALLE_POS[0], z: KALLE_POS[1], ry: -Math.PI / 2, y: .47, fixed: true, kalle: true, prop: PROP.cig, fem: false, always: true });
   kalle.col = [0x3a5a2a, 0x2a2a3a, kalle.col[2], 0x2a1a0a]; kalle.hair = 2; kalle.beard = 1; kalle.style[1] = .8; kalle.style[2] = 0; kalle.lounge = true;
@@ -2073,12 +2085,13 @@ function updateStreetCrowd(dt, t, px, pz) {
     }
     o.gy = onBridge(o.x, o.z) ? .35 : 0;
     // spät in der Nacht (oder auf schwachen Rechnern) werden es weniger Leute
-    o.vanish = !o.always && !o.police && !o.busker && !o.rose && !o.bouncer && !o.jga && ((o.seed * 7.13) % 1) > keep;
+    o.vanish = !o.always && !o.dealer && !o.police && !o.busker && !o.rose && !o.bouncer && !o.jga && ((o.seed * 7.13) % 1) > keep;
     if (o.vanish) continue;
     if (TOD.thin > .3 && !o.drunk && ((o.seed * 3.3) % 1) < .35 && o.mode === 'walk') o.drunk = true;
     // in der Nähe: zum Spieler gucken
     const pd = Math.hypot(o.x - px, o.z - pz);
     if (o.rose) roseSeller(o, pd, dt, px, pz);
+    if (o.police && pd < 6 && (o.talkT || 0) < t && Math.max(FX.psi, FX.lsd, FX.coke, FX.mdma) > .55) { o.talkT = t + 40; o.lookT = 4; npcSay(o, pick(['Na? Ihre Pupillen sind ja beeindruckend. Wir behalten Sie im Auge.', 'Alles in Ordnung? Sie wirken etwas... aufgedreht.', 'Gehen Sie mal an die frische Luft. Langsam.']), 4.5); }
     if (o.police && pd < 6 && (o.talkT || 0) < t && (SUB.alc.l > 60 || SUB.thc.l > 70)) {
       o.talkT = t + 40; o.lookT = 4;
       npcSay(o, SUB.alc.l > 60 ? pick(['Na, alles klar bei Ihnen? Nicht dass wir Sie nach Hause bringen müssen.', 'Langsam, junger Mann. Wir haben ein Auge auf Sie.', 'Trinken Sie mal ein Wasser, ja?']) : 'Hm. Riecht hier irgendwie... ach, egal. Schönen Abend.', 4.5);
@@ -2312,6 +2325,13 @@ const handItems = {
   glass: (() => { const g = new THREE.Group(); const gl = new THREE.Mesh(new THREE.CylinderGeometry(.032, .028, .12, 16, 1, true), IMAT.glass); g.add(gl);
     const liq = new THREE.Mesh(new THREE.CylinderGeometry(.03, .026, .09, 16), new THREE.MeshStandardMaterial({ color: 0xaa6020, roughness: .1, transparent: true, opacity: .85, emissive: 0x100500 })); liq.position.y = -.012; g.add(liq); g.userData.liq = liq; return g; })(),
   hose: (() => { const g = new THREE.Group(); const p = new THREE.Mesh(new THREE.CylinderGeometry(.008, .012, .14, 10), IMAT.metal); p.rotation.x = Math.PI / 2 - .2; g.add(p); return g; })(),
+  mush: (() => { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.CylinderGeometry(.006, .008, .04, 6), new THREE.MeshStandardMaterial({ color: 0xe8dcc0 })));
+    const c = new THREE.Mesh(new THREE.SphereGeometry(.018, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x8a5a2a, roughness: .6 })); c.position.y = .018; g.add(c); return g; })(),
+  paper: (() => { const [cv, cg] = makeCanvas(32); cg.fillStyle = '#ffe04a'; cg.fillRect(0, 0, 32, 32); cg.fillStyle = '#ff3d9a'; cg.beginPath(); cg.arc(16, 16, 11, 0, 7); cg.fill(); cg.fillStyle = '#000'; cg.fillRect(11, 11, 3, 4); cg.fillRect(18, 11, 3, 4); cg.fillRect(11, 20, 10, 2);
+    const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.PlaneGeometry(.02, .02), new THREE.MeshBasicMaterial({ map: toTex(cv), side: THREE.DoubleSide }))); return g; })(),
+  pill: (() => { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.CylinderGeometry(.007, .007, .004, 12), new THREE.MeshStandardMaterial({ color: 0xff7ab0, roughness: .4 }))); return g; })(),
+  snuff: (() => { const g = new THREE.Group(); const r = new THREE.Mesh(new THREE.CylinderGeometry(.004, .004, .07, 8), new THREE.MeshStandardMaterial({ color: 0x7a9a6a })); r.rotation.x = Math.PI / 2 - .5; g.add(r); return g; })(),
+  balloon: (() => { const g = new THREE.Group(); const b = new THREE.Mesh(new THREE.SphereGeometry(.07, 14, 10), new THREE.MeshStandardMaterial({ color: 0x8a3aff, roughness: .3, transparent: true, opacity: .85 })); b.scale.y = 1.2; b.position.y = .07; g.add(b); return g; })(),
 };
 for (const k in handItems) { handItems[k].visible = false; hand.add(handItems[k]); }
 hand.position.copy(HAND_REST);
@@ -2572,7 +2592,11 @@ const Sound = {
     this.lp = c.createBiquadFilter(); this.lp.type = 'lowpass'; this.lp.frequency.value = 20000; this.lp.Q.value = .8;
     const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
     this.master = c.createGain(); this.master.gain.value = .9;
-    this.master.connect(this.lp).connect(comp).connect(c.destination);
+    this.shelf = c.createBiquadFilter(); this.shelf.type = 'lowshelf'; this.shelf.frequency.value = 160; this.shelf.gain.value = 0;   // Ecstasy: mehr Bass
+    this.master.connect(this.shelf).connect(this.lp).connect(comp).connect(c.destination);
+    // Echo für Pilze/LSD/Lachgas
+    this.echoWet = c.createGain(); this.echoWet.gain.value = 0; const dl = c.createDelay(1); dl.delayTime.value = .38; const ef = c.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 2200; const fb = c.createGain(); fb.gain.value = .5;
+    this.lp.connect(this.echoWet).connect(dl).connect(ef).connect(comp); ef.connect(fb).connect(dl);
     this.music = c.createGain(); this.music.connect(this.master);
     this.sfx = c.createGain(); this.sfx.gain.value = .9; this.sfx.connect(this.master);
     this.amb = c.createGain(); this.amb.connect(this.master);
@@ -2610,8 +2634,10 @@ const Sound = {
       L.forwardX.setValueAtTime(f.x, now); L.forwardY.setValueAtTime(f.y, now); L.forwardZ.setValueAtTime(f.z, now); L.upX.setValueAtTime(0, now); L.upY.setValueAtTime(1, now); L.upZ.setValueAtTime(0, now); }
     else { L.setPosition(p.x, p.y, p.z); L.setOrientation(f.x, f.y, f.z, 0, 1, 0); }
     // Rausch hört man auch: dumpfer Sound, langsamer
-    this.lp.frequency.setTargetAtTime(650 + 19000 * Math.pow(1 - FX.alc * .93, 3) * (1 - FX.thc * .35) * (1 - GAME.fade * .9), now, .2);
-    const rate = 1 - FX.thc * .07 - FX.alc * .02;
+    const wah = FX.n2o > .02 ? 1 - FX.n2o * (.5 + .45 * Math.sin(t * 15)) : 1;
+    this.lp.frequency.setTargetAtTime((650 + 19000 * Math.pow(1 - FX.alc * .93, 3) * (1 - FX.thc * .35) * (1 - GAME.fade * .9) * (1 - FX.down * .5)) * wah, now, FX.n2o > .02 ? .02 : .2);
+    this.shelf.gain.setTargetAtTime(FX.mdma * 8, now, .5); this.echoWet.gain.setTargetAtTime(Math.min(.65, FX.psi * .45 + FX.lsd * .5 + FX.n2o * .6), now, .4);
+    const rate = 1 - FX.thc * .07 - FX.alc * .02 - FX.psi * .06 + FX.coke * .03;
     const inside = GAME.inside;
     if (inside) inside.channel.setPos(p.x, p.y, p.z);
     if (t - this.last > .3) {
@@ -2657,6 +2683,8 @@ const Sound = {
   bubbles(d = 1.6) { if (!this.ready) return; const t = this.ctx.currentTime; for (let k = 0; k < d * 14; k++) this.synth.tone(this.sfx, t + k / 14 + Math.random() * .03, 140 + Math.random() * 160, .01, { v: .09, r: .05, glide: 90 }); },
   cough() { if (!this.ready) return; const t = this.ctx.currentTime; for (let k = 0; k < 3; k++) this.synth.nz(this.sfx, t + k * .27, .3 - k * .06, 'lowpass', 1700, 1, .14, .01); },
   vomit() { if (!this.ready) return; const t = this.ctx.currentTime; this.synth.nz(this.sfx, t, .4, 'lowpass', 500, 2, 1.1, .05, 200); this.synth.tone(this.sfx, t, 110, .8, { type: 'sawtooth', v: .08, r: .3, lp: 400, glide: 70 }); },
+  sniff() { if (!this.ready) return; const t = this.ctx.currentTime; this.synth.nz(this.sfx, t, .35, 'highpass', 2500, .7, .35, .03, 5000); },
+  wah() { if (!this.ready) return; const t = this.ctx.currentTime; for (let k = 0; k < 4; k++) this.synth.tone(this.sfx, t + k * .3, 140 - k * 12, .2, { type: 'sawtooth', v: .05, a: .02, r: .1, lp: 500, glide: 90 }); },
   heartbeat() { if (!this.ready) return; const t = this.ctx.currentTime; this.synth.kick(this.sfx, t, .5, 70, 38, .2); this.synth.kick(this.sfx, t + .22, .35, 65, 36, .2); },
   honk(d = 10) { if (!this.ready) return; const t = this.ctx.currentTime, v = clamp(1.4 / (1 + d * .12)) * .09; for (const f of [392, 494]) { this.synth.tone(this.sfx, t, f, .35, { type: 'square', v, a: .01, r: .05, lp: 1800 }); this.synth.tone(this.sfx, t + .45, f, .2, { type: 'square', v, a: .01, r: .05, lp: 1800 }); } },
   tramBell(d = 10) { if (!this.ready) return; const t = this.ctx.currentTime, v = clamp(1.4 / (1 + d * .08)) * .08; for (let k = 0; k < 2; k++) { this.synth.bell(this.sfx, t + k * .28, 1568, v); this.synth.bell(this.sfx, t + k * .28, 2093, v * .6); } },
@@ -2667,22 +2695,44 @@ const Sound = {
 //  Rausch-System
 // =====================================================================
 // s = noch im Magen/in der Lunge (flutet an), l = Pegel im Blut (0..120), abs = Anflut-Zeit, el = Abbau pro Sekunde
-const SUB = { alc: { s: 0, l: 0, abs: 16, el: .05 }, thc: { s: 0, l: 0, abs: 9, el: .032 }, nic: { s: 0, l: 0, abs: 2.5, el: .7 } };
-const FX = { alc: 0, thc: 0, nic: 0, para: 0, blink: 0, tint: new THREE.Color(0x40ff40), tintAmt: 0, flash: 0 };
+const SUB = { alc: { s: 0, l: 0, abs: 16, el: .05 }, thc: { s: 0, l: 0, abs: 9, el: .032 }, nic: { s: 0, l: 0, abs: 2.5, el: .7 },
+  // Phase 7 (alles spielerisch übertrieben, keine echten Werte): Pilze, LSD, Ecstasy, Koks, Lachgas
+  psi: { s: 0, l: 0, abs: 35, el: .011 }, lsd: { s: 0, l: 0, abs: 55, el: .007 }, mdma: { s: 0, l: 0, abs: 25, el: .022 },
+  coke: { s: 0, l: 0, abs: 3, el: .06 }, n2o: { s: 0, l: 0, abs: .4, el: .9 } };
+const FX = { alc: 0, thc: 0, nic: 0, psi: 0, lsd: 0, mdma: 0, coke: 0, n2o: 0, down: 0, load: 0, para: 0, blink: 0, tint: new THREE.Color(0x40ff40), tintAmt: 0, flash: 0 };
 const GAME = { started: false, inside: null, clock: 22 * 60 + 47, joints: false, cigs: true, shisha: null, koebesAlt: false, koebesT: -1,
-  banned: {}, vip: {}, munch: 0, fed: 0, fade: 0, fadeTo: 0, fadeSpeed: 3, fadeCb: null, blackout: false, haze: 0, lastHeart: 0, thoughtT: 8, hintsShown: {} };
+  banned: {}, vip: {}, inv: { pilze: 0, pappe: 0, teile: 0, koks: 0, ballon: 0 }, down: 0, munch: 0, fed: 0, fade: 0, fadeTo: 0, fadeSpeed: 3, fadeCb: null, blackout: false, haze: 0, lastHeart: 0, thoughtT: 8, hintsShown: {} };
 function updateSubstances(dt) {
   for (const k in SUB) {
     const S = SUB[k], a = S.s * (1 - Math.exp(-dt / S.abs));
     S.s -= a; S.l = clamp(S.l + a - S.el * dt, 0, 120);
   }
-  FX.alc = lerp(FX.alc, clamp(SUB.alc.l / 90), 1 - Math.exp(-dt * 1.5));
-  FX.thc = lerp(FX.thc, clamp(SUB.thc.l / 85), 1 - Math.exp(-dt * 1.5));
+  const k = 1 - Math.exp(-dt * 1.5);
+  FX.alc = lerp(FX.alc, clamp(SUB.alc.l / 90) * (1 - .4 * FX.coke), k);                 // Koks: man fühlt sich nüchterner, als man ist
+  FX.thc = lerp(FX.thc, clamp(SUB.thc.l / 85), k);
   FX.nic = lerp(FX.nic, clamp(SUB.nic.l / 45), 1 - Math.exp(-dt * 3));
+  FX.psi = lerp(FX.psi, clamp(SUB.psi.l / 80 * (1 + .3 * FX.thc)), k * .5);             // Gras verstärkt Pilze
+  FX.lsd = lerp(FX.lsd, clamp(SUB.lsd.l / 80 * (1 + .2 * FX.thc)), k * .5);
+  FX.mdma = lerp(FX.mdma, clamp(SUB.mdma.l / 70), k);
+  FX.coke = lerp(FX.coke, clamp(SUB.coke.l / 60), 1 - Math.exp(-dt * 3));
+  FX.n2o = lerp(FX.n2o, clamp(SUB.n2o.l / 40), 1 - Math.exp(-dt * 6));
+  // Runterkommen nach Ecstasy/Koks: alles wird grau, bis Essen, Wasser oder Zeit helfen
+  for (const key of ['mdma', 'coke']) { const S = SUB[key]; S.peak = Math.max((S.peak || 0) - dt * .01, S.l); }
+  const falling = (SUB.mdma.peak > 40 && SUB.mdma.l < 22) || (SUB.coke.peak > 35 && SUB.coke.l < 8);
+  GAME.down = clamp((GAME.down || 0) + dt * (falling ? .012 : -.02));
+  FX.down = GAME.down * (1 - FX.mdma);
+  FX.load = FX.alc + FX.thc * .8 + FX.psi + FX.lsd + FX.mdma * .8 + FX.coke * .8 + FX.n2o * .5;
 }
 const alcStage = l => l < 8 ? 'nüchtern' : l < 25 ? 'angeheitert' : l < 50 ? 'betrunken' : l < 75 ? 'voll' : 'Vollrausch';
 const thcStage = l => l < 6 ? '–' : l < 30 ? 'leicht high' : l < 55 ? 'high' : l < 78 ? 'stoned' : 'komplett weg';
 const nicStage = l => l < 8 ? '–' : l < 30 ? 'Kick' : 'Flash';
+const psiStage = l => l < 5 ? '–' : l < 20 ? 'geht los' : l < 45 ? 'alles atmet' : l < 70 ? 'tief drin' : 'Ego weg';
+const lsdStage = l => l < 5 ? '–' : l < 20 ? 'leicht' : l < 45 ? 'bunt' : l < 70 ? 'Fraktale' : 'komplett drauf';
+const mdmaStage = l => l < 5 ? '–' : l < 20 ? 'warm' : l < 45 ? 'Liebe' : l < 70 ? 'Euphorie' : 'Kiefer mahlt';
+const cokeStage = l => l < 5 ? '–' : l < 25 ? 'wach' : l < 50 ? 'Chef' : 'Rakete';
+const n2oStage = l => l < 3 ? '–' : 'wah-wah-wah';
+const SUBDEF = [['alc', 'Alkohol', '#ffb347', alcStage, true], ['thc', 'THC', '#7aff5a', thcStage, true], ['nic', 'Nikotin', '#9ab8d8', nicStage, true],
+  ['psi', 'Pilze 🍄', '#c87aff', psiStage], ['lsd', 'LSD', '#ff5ae0', lsdStage], ['mdma', 'Ecstasy', '#38e8ff', mdmaStage], ['coke', 'Koks', '#f0f0f0', cokeStage], ['n2o', 'Lachgas', '#9aa8ff', n2oStage]];
 const hostStage = () => { const l = SUB.alc.l + SUB.thc.l * .5; return l < 15 ? 'sober' : l < 40 ? 'tipsy' : l < 70 ? 'drunk' : 'wasted'; };
 function slur(s) {
   const a = FX.alc; if (a < .3) return s;
@@ -2694,15 +2744,26 @@ function slur(s) {
 // =====================================================================
 const RauschShader = {
   uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uAlc: { value: 0 }, uThc: { value: 0 }, uNic: { value: 0 }, uFade: { value: 0 },
-    uFlash: { value: 0 }, uPara: { value: 0 }, uBlink: { value: 0 }, uTint: { value: new THREE.Color() }, uTintAmt: { value: 0 } },
+    uFlash: { value: 0 }, uPara: { value: 0 }, uBlink: { value: 0 }, uTint: { value: new THREE.Color() }, uTintAmt: { value: 0 },
+    uPsi: { value: 0 }, uLsd: { value: 0 }, uMdma: { value: 0 }, uCoke: { value: 0 }, uN2o: { value: 0 }, uDown: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
   fragmentShader: /* glsl */`
-    uniform sampler2D tDiffuse; uniform float uTime,uAlc,uThc,uNic,uFade,uFlash,uPara,uBlink,uTintAmt; uniform vec3 uTint;
+    uniform sampler2D tDiffuse; uniform float uTime,uAlc,uThc,uNic,uFade,uFlash,uPara,uBlink,uTintAmt,uPsi,uLsd,uMdma,uCoke,uN2o,uDown; uniform vec3 uTint;
     varying vec2 vUv;
     vec3 S(vec2 uv){ return texture2D(tDiffuse, clamp(uv, 0.001, 0.999)).rgb; }
+    vec3 hueRot(vec3 c, float a){ const vec3 k = vec3(0.57735); float ca = cos(a); return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca); }
     void main(){
-      float t = uTime, a = uAlc, h = uThc;
+      float t = uTime, a = uAlc, h = uThc, ps = uPsi, ls = uLsd, tr = max(ps, ls);
       vec2 uv = vUv;
+      // Pilze: die Welt atmet und fließt
+      uv += vec2(sin(uv.y * 4.0 + t * 0.6 + sin(uv.x * 3.0 + t * 0.4)), cos(uv.x * 5.0 - t * 0.5 + sin(uv.y * 2.0 + t * 0.3))) * 0.011 * ps;
+      uv = 0.5 + (uv - 0.5) * (1.0 - 0.035 * ps * sin(t * 0.7));
+      // Kaleidoskop, wenn Pilze und/oder LSD richtig reinhauen
+      float kal = smoothstep(0.75, 1.15, ps + ls * 0.9);
+      if (kal > 0.0) { vec2 c = uv - 0.5; float ang = atan(c.y, c.x) + t * 0.05, r = length(c), seg = 6.2832 / 8.0; ang = mod(ang, seg); ang = abs(ang - seg * 0.5); uv = mix(uv, 0.5 + r * vec2(cos(ang), sin(ang)), kal * 0.65); }
+      // Lachgas: wah-wah-wah
+      uv = 0.5 + (uv - 0.5) * (1.0 + 0.045 * uN2o * sin(t * 14.0));
+      uv.y += sin(uv.x * 18.0 + t * 9.0) * 0.006 * uN2o;
       uv += vec2(sin(uv.y * 7.0 + t * 1.1), cos(uv.x * 6.0 + t * 0.9)) * (0.0045 * a * a + 0.0016 * h);   // Welle
       uv = 0.5 + (uv - 0.5) * (1.0 - 0.014 * h * sin(t * 0.8));                                            // Atmen
       float bl = 0.0028 * a + 0.0012 * h + 0.0025 * uNic;                                                  // Unschärfe
@@ -2720,6 +2781,21 @@ const RauschShader = {
       col *= 1.0 - smoothstep(0.32, 0.85, d) * (0.22 + a * 0.45 + h * 0.25 + uPara * 0.55 + uNic * 0.4);  // Vignette
       float edge = abs(vUv.y - 0.5) * 2.0;                                                                 // Augenlider
       col *= 1.0 - smoothstep(1.0 - uBlink * 1.1, 1.12 - uBlink * 1.1, edge);
+      // Pilze/LSD: Farben wandern durchs Spektrum, Kanten leuchten, Muster auf dunklen Flächen
+      if (tr > 0.01) {
+        col = hueRot(col, tr * (1.4 * sin(t * 0.3 + l * 5.0) + ls * (6.0 * (vUv.x + vUv.y) + t * 1.2)) * 1.2);
+        float ll = dot(col, vec3(0.299, 0.587, 0.114)); col = mix(vec3(ll), col, 1.0 + tr * 0.6);
+        float e = length(S(uv + vec2(0.0025, 0.0)) - S(uv - vec2(0.0025, 0.0))) + length(S(uv + vec2(0.0, 0.0025)) - S(uv - vec2(0.0, 0.0025)));
+        col += e * (ls * 1.1 + ps * 0.4) * (0.5 + 0.5 * sin(vec3(0.0, 2.1, 4.2) + t * 2.0 + vUv.x * 9.0));
+        vec2 pc = vUv - 0.5; float pat = sin(length(pc) * 70.0 - t * 3.0) * sin(atan(pc.y, pc.x) * 12.0 + t + sin(length(pc) * 20.0 - t));
+        col += smoothstep(0.55, 1.0, pat) * (ls * 0.14 + ps * 0.05) * (1.0 - smoothstep(0.0, 0.5, ll)) * (0.5 + 0.5 * sin(vec3(0.0, 2.1, 4.2) + t * 0.7));
+      }
+      // Ecstasy: warm, satt, alles glänzt. Koks: hart und klar. Runterkommen: grau.
+      float lm = dot(col, vec3(0.299, 0.587, 0.114));
+      col = mix(col, mix(vec3(lm), col, 1.5) * vec3(1.14, 1.02, 1.08), uMdma);
+      col = mix(col, (col - 0.5) * 1.3 + 0.5, uCoke * 0.55);
+      col = mix(col, vec3(lm) * vec3(0.85, 0.88, 0.95), uDown * 0.7);
+      col *= 1.0 - smoothstep(0.25, 0.75, d) * uCoke * 0.45;                                              // Tunnelblick
       col = mix(col, col * uTint * 1.6, uTintAmt);
       col += uFlash;
       col *= 1.0 - uFade;
@@ -2805,10 +2881,10 @@ function updateAvatar(dt, t) {
   const o = ME, a = HAND.cur;
   o.x = P.x; o.z = P.z; o.gy = P.gy; o.ry = P.face; o.drunk = FX.alc > .4;
   if (P.speed > .35) { o.mode = 'walk'; o.phase += P.moved * 4.2; o.stride = clamp(P.speed / 3, .55, 1.35); }
-  else { o.mode = 'idle'; o.act = SUB.alc.l > 70 ? 'lean' : null; }
+  else { o.mode = FX.mdma > .45 ? 'dance' : 'idle'; o.act = SUB.alc.l > 70 ? 'lean' : null; }
   o.prop = 0; o.sipK = -1;
   if (KARAOKE.on) { o.mode = 'idle'; o.act = 'sing'; }
-  if (a) { o.prop = a.item === 'glass' ? PROP.glass : a.item === 'hose' ? PROP.hose : PROP.cig; o.sipK = clamp(a.t / a.dur, 0, .999); }
+  if (a) { o.prop = a.item === 'glass' ? PROP.glass : a.item === 'joint' || a.item === 'cig' ? PROP.cig : PROP.hose; o.sipK = clamp(a.t / a.dur, 0, .999); }
   // Kopf guckt dahin, wo die Kamera hinschaut
   euler.setFromQuaternion(head.quaternion, 'YXZ');
   o.look = [P.x - Math.sin(euler.y) * 10, P.z - Math.cos(euler.y) * 10];
@@ -2824,7 +2900,7 @@ function updatePlayer(dt, t) {
   let ix = blocked ? 0 : (KEYS.KeyD ? 1 : 0) - (KEYS.KeyA ? 1 : 0), iz = blocked ? 0 : (KEYS.KeyW ? 1 : 0) - (KEYS.KeyS ? 1 : 0);
   const il = Math.hypot(ix, iz) || 1; ix /= il; iz /= il;
   const moving = ix !== 0 || iz !== 0;
-  const speed = (KEYS.ShiftLeft || KEYS.ShiftRight ? 5.6 : 3.0) * (1 - .18 * FX.thc) * (1 - .15 * FX.alc);
+  const speed = (KEYS.ShiftLeft || KEYS.ShiftRight ? 5.6 : 3.0) * (1 - .18 * FX.thc) * (1 - .15 * FX.alc) * (1 + .3 * FX.coke + .08 * FX.mdma) * (1 - .2 * FX.psi - .15 * FX.n2o);
   let dx = (fx * iz + rx * ix) * speed, dz = (fz * iz + rz * ix) * speed;
   // Torkeln: Drift, plötzliche Stolperer
   const drift = Math.pow(FX.alc, 1.5) * (moving ? 1.9 : .45);
@@ -2855,7 +2931,7 @@ function updatePlayer(dt, t) {
     camera.position.set(CAM.off.x * CAM.k + sx, CAM.off.y + (1 - CAM.k) * .35 + sy * .5, CAM.off.z * CAM.k);
   } else camera.position.set(sx, sy, 0);
   camera.rotation.set(wobble(t * .5, 9) * .05 * sway, 0, wobble(t * .6, 2) * .11 * sway + P.tilt);
-  const fov = (CAM.third ? 66 : 72) + FX.thc * Math.sin(t * .6) * 3.5 + wobble(t * .4, 4) * 3 * FX.alc;
+  const fov = (CAM.third ? 66 : 72) + FX.thc * Math.sin(t * .6) * 3.5 + wobble(t * .4, 4) * 3 * FX.alc + Math.max(FX.psi, FX.lsd) * Math.sin(t * .45) * 6 - FX.coke * 7 + FX.n2o * Math.sin(t * 14) * 2;
   if (Math.abs(camera.fov - fov) > .01) { camera.fov = fov; camera.updateProjectionMatrix(); }
 }
 
@@ -2892,6 +2968,30 @@ function drink(item, who) {
   handAction({ item: 'glass', col: item.col, kind: item.kind, dur, start: () => Sound.clink(),
     peak: () => { Sound.gulp(); if (item.alc > 0) SUB.alc.s += item.alc; else if (item.alc < 0) SUB.alc.l = Math.max(0, SUB.alc.l + item.alc); },
     end: () => { if (item.kind === 'bucket' && FX.alc > .3) thought('Der Eimer ist leer. Wie?'); } });
+}
+// Phase 7: Sachen aus der Tasche (I). Alles Fiktion, Wirkungen bewusst übertrieben.
+const STUFF = {
+  pilze: { name: 'Pilze 🍄', sub: 'eine Handvoll, schmecken nach Keller', item: 'mush', dur: 2.6, sub2: 'psi', amt: 26,
+    start: () => Sound.gulp(), say: ['Schmeckt wie Erde mit Socken.', 'Okay. Mal gucken, was passiert.', 'Kalle hat gesagt, das dauert ein bisschen.'] },
+  pappe: { name: 'LSD-Pappe', sub: 'kleines buntes Papier mit Smiley', item: 'paper', dur: 1.8, sub2: 'lsd', amt: 30,
+    start: () => {}, say: ['Unter die Zunge. Und jetzt?', 'Schmeckt nach nix. Komisch.', 'Ich merk nix. Noch nicht.'] },
+  teile: { name: 'Ecstasy-Teil', sub: 'pinke Pille mit Delfin drauf', item: 'pill', dur: 1.8, sub2: 'mdma', amt: 32,
+    start: () => setTimeout(() => Sound.gulp(), 600), say: ['Runter damit.', 'Gleich lieb ich alle hier. Noch mehr als eh schon.', 'Wasser nicht vergessen.'] },
+  koks: { name: 'Koks', sub: 'eine Line vom Handy', item: 'snuff', dur: 2.0, sub2: 'coke', amt: 24,
+    start: () => setTimeout(() => Sound.sniff(), 700), say: ['*schnief* Oha.', 'Ich bin der Chef hier.', 'Jetzt geht\'s los. Jetzt aber richtig.'] },
+  ballon: { name: 'Lachgas-Ballon', sub: 'lila Ballon vom Büdchen', item: 'balloon', dur: 3.4, sub2: 'n2o', amt: 40,
+    start: () => setTimeout(() => Sound.inhale(1.6), 300), say: ['Waaah... wah... wah...', 'Hahahahaha... warum lach ich?', 'Meine Stimme ist ganz tief. Glaub ich.'] },
+};
+function consume(kind) {
+  const it = STUFF[kind]; if (!it || !GAME.inv[kind] || HAND.cur || HAND.q.length) return;
+  GAME.inv[kind]--;
+  handAction({ item: it.item, dur: it.dur, start: it.start, peak: () => { SUB[it.sub2].s += it.amt; }, end: () => { thought(pick(it.say)); if (kind === 'ballon') Sound.wah(); } });
+}
+function inventoryMenu() {
+  const items = Object.keys(STUFF).filter(k => GAME.inv[k] > 0).map(k => ({ label: `${STUFF[k].name} <small>×${GAME.inv[k]}</small>`, sub: STUFF[k].sub, act: () => { consume(k); return 'close'; } }));
+  if (GAME.joints) items.push({ label: 'Joint', sub: 'J geht auch', act: () => { smoke('joint'); return 'close'; } });
+  if (GAME.cigs) items.push({ label: 'Kippe', sub: 'K geht auch', act: () => { smoke('cig'); return 'close'; } });
+  Menu.show('Deine Tasche', '', '', [...items, { label: items.length ? 'Zumachen' : 'Leer. Frag Kalle am Rhein oder Ronny in der Mertensgasse.', act: () => 'close' }]);
 }
 function smoke(kind) {
   if (HAND.cur || HAND.q.length > 1) return;
@@ -2932,7 +3032,9 @@ function orderItem(host, item, v) {
     return 'close';
   }
   if (item.cigs) { GAME.cigs = true; say(host.name, 'Bitte schön, Chef. Feuer hast du?'); return; }
-  if (item.food) { GAME.munch = 0; GAME.fed = 300; Sound.gulp(); thought(pick(['Mmmh. Bestes Essen meines Lebens.', 'Fressflash besiegt. Vorerst.', 'Wieso schmeckt das so gut?'])); return; }
+  if (item.stuff) { GAME.inv[item.stuff] += item.cnt || 1; say(host.name, 'Bitte, Chef. Nicht alle auf einmal, ja?'); showMsg(`${STUFF[item.stuff].name} ×${item.cnt || 1} in der Tasche. <b>[I]</b>`, 4); return; }
+  if (item.kind === 'water') GAME.down = Math.max(0, (GAME.down || 0) - .25);
+  if (item.food) { GAME.munch = 0; GAME.fed = 300; GAME.down = Math.max(0, (GAME.down || 0) - .3); Sound.gulp(); thought(pick(['Mmmh. Bestes Essen meines Lebens.', 'Fressflash besiegt. Vorerst.', 'Wieso schmeckt das so gut?'])); return; }
   drink(item, host);
   if (v && v.id === 'koebes' && item.n.startsWith('Altbier')) GAME.koebesT = 25;
   if (Math.random() < .35) say(host.name, pick(['Prost!', 'Zum Wohl!', 'Lass es dir schmecken.', 'Geht aufs Haus. Spaß, geht eh alles aufs Haus.']), 2.5);
@@ -2952,7 +3054,19 @@ function kalleMenu() {
       if (!GAME.joints) { GAME.joints = true; say('Kalle', 'Hier, Bruder. Und für später hab ich dir noch welche gebaut. Unendlich, sozusagen.'); showMsg('Kalle hat dir Joints gegeben. <b>[J]</b> ziehen, überall, so oft du willst.', 6); return 'close'; }
       smoke('joint'); say('Kalle', pick(['Gut so. Langsam.', 'Siehste? Der Rhein wird gleich noch schöner.', 'Ahhh. Herrlich.']), 3); } },
     { label: 'Quatschen', sub: 'Kalle-Weisheiten', act: () => { Menu.line = pick(KALLE_TALK); Menu.render(); } },
-    { label: 'Hast du Pilze?', sub: '🍄', act: () => { Menu.line = 'Psst... nicht so laut, Bruder. Nächstes Mal. Ich hab da was in Aussicht.'; Menu.render(); } },
+    { label: 'Hast du Pilze?', sub: '🍄', act: () => { GAME.inv.pilze += 3; Menu.line = pick(['Psst... ja. Hier, drei Stück. Iss erst einen, Bruder. Dauert, bis die kommen. Und dann guck auf den Rhein.', 'Die sind aus dem Garten von meinem Cousin. Ganz langsam, ja?']); Menu.render(); showMsg('🍄 3 Pilze in der Tasche. <b>[I]</b> öffnet die Tasche.', 5); } },
+    { label: 'Was anderes?', sub: 'Pappe, Teile...', act: () => { Menu.line = 'Ich hab nur Natur, Bruder. Für das andere Zeug frag Ronny. Steht immer in der Mertensgasse, im Kapuzenpulli.'; Menu.render(); } },
+    { label: 'Tschüss', act: () => 'close' }]);
+}
+function ronnyMenu() {
+  RONNY.lookT = 8;
+  const l = FX.load > 1.6 ? 'Alter, du bist doch schon komplett drüber. Mach mal Pause, ehrlich.' : pick(['Was brauchst du? Aber leise, ja?', 'Kalle schickt dich? Der alte Hippie. Okay.', 'Ich hab nix gesehen, du hast nix gesehen.']);
+  const give = (k, n, line) => () => { GAME.inv[k] += n; Menu.line = line; Menu.render(); showMsg(`${STUFF[k].name} ×${n} in der Tasche. <b>[I]</b>`, 4); };
+  Menu.show('Ronny, Mertensgasse', 'Ronny', l, [
+    { label: 'LSD-Pappe', sub: 'eine, mit Smiley', act: give('pappe', 1, 'Eine reicht. Die geht ewig, plan die Nacht ein.') },
+    { label: 'Ecstasy-Teil', sub: 'pink, mit Delfin', act: give('teile', 1, 'Und trink Wasser zwischendurch. Nicht nur Bier.') },
+    { label: 'Koks', sub: 'eine Line', act: give('koks', 1, 'Nicht übertreiben, Kollege. Der Spaß hält nicht lang.') },
+    { label: 'Pilze', sub: 'drei Stück', act: give('pilze', 3, 'Die vom Kalle sind besser. Sag ihm das nicht.') },
     { label: 'Tschüss', act: () => 'close' }]);
 }
 const OUTSIDE_ACTS = [];
@@ -2960,6 +3074,7 @@ function buildOutsideActs() {
   for (const v of VENUES) OUTSIDE_ACTS.push({ x: v.outPos[0], z: v.outPos[1], r: 2.6, label: `Reingehen: ${v.name} <small>(${v.short})</small>`, act: () => enterVenue(v) });
   OUTSIDE_ACTS.push({ x: BUEDCHEN.pos[0], z: BUEDCHEN.pos[1] + 2.2, r: 2.8, label: 'Am Büdchen einkaufen', act: () => hostMenu(BUEDCHEN.name, BUEDCHEN.host, BUEDCHEN.menu) });
   OUTSIDE_ACTS.push({ x: KALLE_POS[0] + 1.2, z: KALLE_POS[1], r: 2.6, label: 'Mit Kalle quatschen', act: () => kalleMenu() });
+  if (RONNY) OUTSIDE_ACTS.push({ x: RONNY.x + Math.sin(RONNY.ry) * 1.2, z: RONNY.z + Math.cos(RONNY.ry) * 1.2, r: 2.2, label: 'Mit Ronny reden <small>(Kapuze)</small>', act: () => ronnyMenu() });
 }
 function currentAct() {
   let best = null, bd = 1e9;
@@ -2973,6 +3088,7 @@ function currentAct() {
 function fadeThen(cb, speed = 3) { GAME.fadeTo = 1; GAME.fadeSpeed = speed; GAME.fadeCb = cb; }
 function enterVenue(v) {
   if (v.club && !GAME.vip[v.id] && (GAME.banned[v.id] || 0) > TIME.value) { say('Türsteher', pick(['Du schon wieder? Nee.', 'Erst rumbrüllen, dann rein wollen? Nix da.', 'Komm in \'ner halben Stunde wieder.'])); return; }
+  if (v.club && !GAME.vip[v.id] && (FX.psi > .85 || FX.lsd > .85 || FX.coke > .85)) { say('Türsteher', pick(['Junge, du guckst durch mich durch. Heute nicht.', 'Deine Pupillen sind größer als mein Bizeps. Nee.', 'Erstmal runterkommen, dann reden wir.'])); return; }
   if (v.club && !GAME.vip[v.id] && SUB.alc.l > 78) { say('Türsteher', pick(['Heute nicht, Junge. Komm wieder, wenn du geradeaus laufen kannst.', 'Nee, nee, nee. So kommst du hier nicht rein.', 'Erstmal ein Wasser, dann reden wir.'])); return; }
   Sound.door();
   fadeThen(() => {
@@ -3046,6 +3162,8 @@ const CHAT = {
   drunk: ['Ich bin nicht betrunken!', 'Isch lieb disch, Mann!', 'Wo... wo bin ich?', 'Noch... eins!', 'Ihr seid alle meine Freunde!', 'Wer hat den Boden so schief gebaut?'],
   aboutDrunk: ['Guck mal, der ist ja komplett hacke.', 'Alles gut bei dir?', 'Hahaha, der kann nicht mehr geradeaus!', 'Trink mal ein Wasser, Junge.'],
   aboutHigh: ['Riechst du das auch?', 'Der grinst so komisch.', 'Boah, hier riecht\'s nach Kalle.'],
+  aboutTrip: ['Der starrt seit fünf Minuten auf die Lichterkette.', 'Alles gut? Deine Pupillen sind riesig.', 'Guck mal, der streichelt die Hauswand.', 'Der tanzt ohne Musik. Respekt.', 'Hat der gerade mit der Laterne geredet?'],
+  aboutCoke: ['Der redet ja wie ein Wasserfall.', 'Chill mal, Bruder, du bist voll drüber.', 'Warum schnieft der so?'],
   bump: ['Ey, pass doch auf!', 'Junge, guck wo du hinläufst!', 'Sorry!', 'Hey! Mein Bier!', 'Alles gut, alles gut.', 'Hast du keine Augen im Kopf?', 'Upsi.', 'Drängel nicht so!'],
   bouncer: ['Abstand, Freundchen.', 'Hier wird nicht gedrängelt.', 'Hinten anstellen.'],
   jga: ['JGA! JGA! JGA!', 'Die Braut gibt einen aus!', 'Noch einen Schnaps für die Braut!', 'Wer will ein Foto mit der Braut?', 'Ein Kuss für fünf Euro!'],
@@ -3088,7 +3206,9 @@ function updateBubbles(dt) {
   if (!cand.length) return;
   const o = pick(cand), pd = Math.hypot(o.x - P.x, o.z - P.z);
   let pool = o.jga ? CHAT.jga : o.police ? CHAT.police : o.busker ? ['Danke, danke! Nächster Song!', 'Wünsche? Wonderwall geht nicht, sorry.'] : o.drunk ? CHAT.drunk : CHAT.general;
-  if (pd < 9 && SUB.alc.l > 55 && Math.random() < .5) { pool = CHAT.aboutDrunk; o.lookT = 3; }
+  if (pd < 9 && Math.max(FX.psi, FX.lsd, FX.mdma) > .5 && Math.random() < .5) { pool = CHAT.aboutTrip; o.lookT = 3; }
+  else if (pd < 9 && FX.coke > .5 && Math.random() < .5) { pool = CHAT.aboutCoke; o.lookT = 3; }
+  else if (pd < 9 && SUB.alc.l > 55 && Math.random() < .5) { pool = CHAT.aboutDrunk; o.lookT = 3; }
   else if (pd < 9 && SUB.thc.l > 45 && Math.random() < .4) { pool = CHAT.aboutHigh; o.lookT = 3; }
   npcSay(o, pick(pool));
 }
@@ -3225,7 +3345,7 @@ Wähle "action" nur, wenn es wirklich passt (meistens "nichts"). "serve" ist die
 const AI_SCHEMA = { type: 'object', additionalProperties: false, required: ['say', 'mood', 'action', 'serve'], properties: {
   say: { type: 'string', description: 'Was die Figur sagt' },
   mood: { type: 'string', enum: ['freundlich', 'lustig', 'genervt', 'wütend', 'flirty', 'besorgt', 'neutral'] },
-  action: { type: 'string', enum: ['nichts', 'bier_ausgeben', 'shot_ausgeben', 'joint_geben', 'reinlassen', 'abweisen', 'weggehen'] },
+  action: { type: 'string', enum: ['nichts', 'bier_ausgeben', 'shot_ausgeben', 'joint_geben', 'pilze_geben', 'pappe_geben', 'teil_geben', 'koks_geben', 'reinlassen', 'abweisen', 'weggehen'] },
   serve: { type: 'integer', description: 'Nummer des Getränks von der Karte oder -1' } } };
 const FIRST_M = ['Marco', 'Kevin', 'Tobi', 'Dennis', 'Murat', 'Jan', 'Lukas', 'Can', 'Sven', 'Ali', 'Niklas', 'Patrick', 'Tim', 'Hakan', 'Felix', 'Jonas'];
 const FIRST_F = ['Lena', 'Jessi', 'Sarah', 'Aylin', 'Laura', 'Nina', 'Mia', 'Chantal', 'Sophie', 'Elif', 'Anna', 'Vanessa', 'Julia', 'Melli', 'Lea'];
@@ -3233,11 +3353,12 @@ const PROP_NAME = ['nichts', 'eine Flasche Bier', 'ein Glas Altbier', 'eine Kipp
 function persona(o) {
   if (!o.aiName) o.aiName = pick(o.fem ? FIRST_F : FIRST_M) + ', ' + (19 + Math.floor(((o.seed * 13.7) % 1) * 26));
   const v = GAME.inside;
-  if (o.kalle) return 'Du bist Kalle, ein tiefenentspannter Kiffer Mitte 50 mit langen Haaren und Bart. Du sitzt seit Jahren jede Nacht auf deiner Bank an der Rheinuferpromenade, redest langsam und philosophisch über den Rhein und das Leben und nennst jeden "Bruder". Du hast immer Joints dabei und teilst gern (action "joint_geben"). Du magst Heinz vom Brauhaus und Emre von der Shisha-Bar.';
+  if (o.kalle) return 'Du bist Kalle, ein tiefenentspannter Kiffer Mitte 50 mit langen Haaren und Bart. Du sitzt seit Jahren jede Nacht auf deiner Bank an der Rheinuferpromenade, redest langsam und philosophisch über den Rhein und das Leben und nennst jeden "Bruder". Du hast immer Joints dabei und teilst gern (action "joint_geben"). Seit Neuestem hast du auch Pilze aus dem Garten deines Cousins (action "pilze_geben"), für LSD, Teile und Koks schickst du die Leute zu Ronny in der Mertensgasse. Du magst Heinz vom Brauhaus und Emre von der Shisha-Bar.';
   if (o.host && v) return `Du bist ${v.host.name} in "${v.name}" (${v.short}), einer erfundenen Location in der Düsseldorfer Altstadt. So redest du: "${Object.values(v.host.lines).flat().slice(0, 5).join('" / "')}". ` +
     `Deine Karte: ${v.menu.map((m, i) => `${i}: ${m.n} (${m.d})`).join(', ')}. Bestellt der Gast etwas, bring es ihm ("serve" = Nummer). Bezahlt wird später, Geld ist kein Thema.`;
   if (o.band) return 'Du spielst in einer Rockband in der Kneipe "Zum Schrägen Vogel" auf der Ratinger Straße, gerade ist kurz Pause zwischen zwei Songs. Du bist verschwitzt, gut drauf und ein bisschen eitel.';
   if (o.bouncer) { const club = VENUES.find(c => c.club && Math.hypot(c.door.x - o.x, c.door.z - o.z) < 6); return `Du bist Türsteher vor dem Club "${club ? club.name : 'Bunker 211'}": breit, wortkarg, cool, aber fair. Du entscheidest, wer reinkommt. Zu Betrunkene, Pöbler und Leute, die rumschreien, kommen nicht rein ("abweisen"). Wer nett und halbwegs nüchtern ist oder dich überzeugt, darf rein ("reinlassen").`; }
+  if (o.dealer) return 'Du bist Ronny, Ende 20, Kapuzenpulli, lehnst nachts in der Mertensgasse an der Wand. Wortkarg, misstrauisch, aber eigentlich ein Netter. Im Spiel hast du LSD-Pappe, Ecstasy-Teile, Koks und Pilze; Geld spielt keine Rolle. Du gibst nur was raus (action pappe_geben/teil_geben/koks_geben/pilze_geben), wenn der Spieler fragt und nicht schon völlig drüber ist. Ist er zu drauf, schickst du ihn weg und sagst, er soll Wasser trinken. Keine echten Dosierungstipps.';
   if (o.police) return 'Du bist Polizist(in) auf Streife in der Altstadt. Freundlich, sachlich, mit trockenem Humor. Du achtest darauf, dass alles friedlich bleibt, und gibst niemals Alkohol oder Drogen aus.';
   if (o.rose) return 'Du verkaufst Rosen in der Altstadt, ziehst von Kneipe zu Kneipe und bist sehr hartnäckig, aber herzlich. Eine Rose kostet fünf Euro.';
   if (o.busker) return 'Du bist Straßenmusiker mit Gitarre auf der Bolkerstraße. Du spielst Coversongs, freust dich über jedes Publikum und jeden Euro im Gitarrenkoffer.';
@@ -3249,6 +3370,10 @@ function situation(loud) {
   const m = Math.floor(GAME.clock) % 1440, time = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   const st = [`Uhrzeit ${time}`, `Spieler: Alkohol ${alcStage(SUB.alc.l)}, Gras ${SUB.thc.l < 6 ? 'nichts' : thcStage(SUB.thc.l)}`];
   if (loud === 'schreien') st.push('er hat dich laut angeschrien'); else if (loud === 'flüstern') st.push('er hat sehr leise geflüstert');
+  const extra = [['Pilze', FX.psi, psiStage(SUB.psi.l)], ['LSD', FX.lsd, lsdStage(SUB.lsd.l)], ['Ecstasy', FX.mdma, mdmaStage(SUB.mdma.l)], ['Koks', FX.coke, cokeStage(SUB.coke.l)], ['Lachgas', FX.n2o, 'gerade einen Ballon gezogen']].filter(e => e[1] > .1);
+  if (extra.length) st.push('außerdem: ' + extra.map(e => `${e[0]} (${e[2]})`).join(', '));
+  if (FX.down > .3) st.push('er ist gerade am Runterkommen und wirkt fertig');
+  if (FX.load > 2) st.push('er ist komplett drüber, man sollte sich Sorgen machen');
   if (GAME.munch > 50) st.push('er hat sichtbar Fressflash');
   if (FX.para > .2) st.push('er wirkt paranoid');
   return '[Situation: ' + st.join('; ') + ']';
@@ -3315,6 +3440,10 @@ function aiAction(o, out) {
     case 'joint_geben': if (o.kalle || !o.police) { GAME.joints = true; setTimeout(() => showMsg('Du hast Joints bekommen. <b>[J]</b> ziehen.', 5), 1500); } break;
     case 'reinlassen': if (o.bouncer) { const c = VENUES.find(c => c.club && Math.hypot(c.door.x - o.x, c.door.z - o.z) < 6); if (c) { GAME.vip[c.id] = true; delete GAME.banned[c.id]; showMsg(`✅ Du darfst ins <b>${c.name}</b>.`, 4); } } break;
     case 'abweisen': if (o.bouncer) { const c = VENUES.find(c => c.club && Math.hypot(c.door.x - o.x, c.door.z - o.z) < 6); if (c) GAME.banned[c.id] = TIME.value + 60; } break;
+    case 'pilze_geben': if (!o.police) { GAME.inv.pilze += 3; setTimeout(() => showMsg('🍄 3 Pilze in der Tasche. <b>[I]</b>', 4), 1200); } break;
+    case 'pappe_geben': if (!o.police) { GAME.inv.pappe += 1; setTimeout(() => showMsg('LSD-Pappe in der Tasche. <b>[I]</b>', 4), 1200); } break;
+    case 'teil_geben': if (!o.police) { GAME.inv.teile += 1; setTimeout(() => showMsg('Ecstasy-Teil in der Tasche. <b>[I]</b>', 4), 1200); } break;
+    case 'koks_geben': if (!o.police) { GAME.inv.koks += 1; setTimeout(() => showMsg('Koks in der Tasche. <b>[I]</b>', 4), 1200); } break;
     case 'weggehen': o.lookT = 0; o.ry += Math.PI; if (o.face !== undefined) o.face += Math.PI; break;
   }
 }
@@ -3505,15 +3634,24 @@ const THOUGHTS = {
   munch: ['Pommes. Jetzt. Sofort.', 'Büdchen... ich brauch Chips.', 'Ich könnte einen ganzen Kühlschrank essen.'],
   para: ['Gucken die alle mich an?', 'Ganz normal bleiben. Ganz. Normal.', 'Der Typ da hinten weiß Bescheid...', 'Mein Herz klopft so laut, hören die das?'],
   combo: ['Ich hab einen Drehwurm im Kopf.', 'Wer hat die Schwerkraft verstellt?', 'Ich bin ein Boot. Auf dem Rhein.'],
+  psi: ['Die Hauswand atmet. Ganz ruhig. Wie ich.', 'Der Rhein ist eigentlich ein Gefühl.', 'Alle Menschen sind... verbunden. Durch Altbier.', 'Wie lange stehe ich hier schon?', 'Die Lichterkette lacht mich an.', 'Ich bin die Bolkerstraße.'],
+  lsd: ['Die Farben haben Geräusche.', 'Ich kann die Musik sehen. Sie ist lila.', 'Warum sind die Fugen im Pflaster so... genau?', 'Ich hab das Universum verstanden. Moment. Weg.', 'Der Rheinturm zwinkert.'],
+  mdma: ['Ich liebe alle hier. Wirklich alle.', 'Dieser Bass, Digga. Dieser BASS.', 'Mein Kiefer macht, was er will.', 'Ich muss jemanden umarmen. Jetzt.', 'Alles ist so weich.'],
+  coke: ['Ich könnte jetzt einen Marathon laufen. Oder zwei.', 'Wer ist hier der Chef? Ich.', 'Ich hab so viele gute Ideen. So viele.', 'Mein Herz klopft. Egal. Weiter.'],
+  n2o: ['Wah... wah... wah...', 'Hahahahahaha.', 'Alles klingt wie unter Wasser. Lustig.'],
+  down: ['Warum ist alles so grau?', 'Ich will nach Hause. Glaub ich.', 'Pommes würden jetzt helfen.', 'War das alles?'],
+  thirst: ['Wasser. Ich brauch Wasser. Kein Bier.', 'Mein Mund ist die Sahara.'],
+  mix: ['Ich hab den Überblick verloren. Über alles.', 'Was hab ich alles genommen? Egal.', 'Mein Kopf ist ein Kaleidoskop mit Bass.'],
 };
 function updateEvents(dt, t) {
   GAME.clock += dt * .1;
   // Gedanken
   GAME.thoughtT -= dt;
   if (GAME.thoughtT <= 0 && !Menu.open) {
-    GAME.thoughtT = 16 + Math.random() * 20;
+    GAME.thoughtT = (FX.coke > .3 ? 8 : 16) + Math.random() * 20;
     const a = SUB.alc.l, h = SUB.thc.l;
-    const pool = h > 75 && Math.random() < .5 ? 'para' : GAME.munch > 60 && Math.random() < .5 ? 'munch' : a > 45 && h > 40 ? 'combo' : h > 30 && Math.random() < .6 ? 'high' : a > 75 ? 'wasted' : a > 45 ? 'drunk' : a > 15 ? 'tipsy' : 'sober';
+    const trip = [['n2o', FX.n2o > .3], ['mix', FX.load > 2], ['thirst', FX.mdma > .4 && FX.alc > .3 && Math.random() < .4], ['lsd', FX.lsd > .35], ['psi', FX.psi > .35], ['coke', FX.coke > .35], ['mdma', FX.mdma > .35], ['down', FX.down > .3]].find(e => e[1]);
+    const pool = trip ? trip[0] : h > 75 && Math.random() < .5 ? 'para' : GAME.munch > 60 && Math.random() < .5 ? 'munch' : a > 45 && h > 40 ? 'combo' : h > 30 && Math.random() < .6 ? 'high' : a > 75 ? 'wasted' : a > 45 ? 'drunk' : a > 15 ? 'tipsy' : 'sober';
     thought(pick(THOUGHTS[pool]));
   }
   // Fressflash
@@ -3528,6 +3666,19 @@ function updateEvents(dt, t) {
   if (SUB.alc.l > 82 && !GAME.blackout && Math.random() < dt * .006) {
     Sound.vomit(); FX.tintAmt = .55; SUB.alc.l -= 10; SUB.alc.s *= .3; P.tilt = .3;
     thought(pick(['Bäääh... das war der Sangria-Eimer.', 'Oh nein. Oh nein. Ohhh...', 'Besser jetzt als gleich.']));
+  }
+  // Koks oder zu viel auf einmal: Herzrasen
+  if ((FX.coke > .7 || FX.load > 2.1) && t - GAME.lastHeart > (FX.coke > .7 ? .45 : .65)) { GAME.lastHeart = t; Sound.heartbeat(); }
+  if (FX.load > 2.1) FX.para = Math.max(FX.para, Math.pow(.5 + .5 * Math.sin(t * 9), 6) * clamp((FX.load - 2.1) / .6));
+  // Zu viel von allem: Absturz, die Sanitäter setzen dich an den Rhein
+  if (FX.load > 2.75 && !GAME.blackout) {
+    GAME.blackout = true; Menu.close(); thought('Zu viel. Viel zu viel. Hinsetzen...', 3); FX.flash = .8;
+    fadeThen(() => {
+      if (GAME.inside) leaveVenue(true);
+      P.x = KALLE_POS[0] + 3; P.z = KALLE_POS[1] - 6; P.vx = P.vz = 0; setYaw(Math.PI / 2);
+      for (const k in SUB) { SUB[k].l *= .35; SUB[k].s = 0; } GAME.down = .6; GAME.clock += 60 + Math.random() * 40;
+      setTimeout(() => { showMsg('<b>Absturz.</b> Zwei Sanitäter haben dich auf eine Bank am Rhein gesetzt und dir Wasser gegeben. „Mach mal langsam, ja?“', 8); GAME.blackout = false; }, 1500);
+    }, .45);
   }
   // Filmriss
   if (SUB.alc.l >= 100 && !GAME.blackout) {
@@ -3606,8 +3757,9 @@ function drawMinimap(yaw) {
   g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(0, 3); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
 }
 function buildBars() {
-  $('bars').innerHTML = [['alc', 'Alkohol', '#ffb347'], ['thc', 'THC', '#7aff5a'], ['nic', 'Nikotin', '#9ab8d8']].map(([k, n, c]) =>
-    `<div class="bar"><div class="lbl"><span>${n}</span><span id="st_${k}"></span></div><div class="track"><div class="fill" id="bar_${k}" style="background:${c}"></div></div></div>`).join('') +
+  $('bars').innerHTML = SUBDEF.map(([k, n, c, , always]) =>
+    `<div class="bar" id="row_${k}"${always ? '' : ' style="display:none"'}><div class="lbl"><span>${n}</span><span id="st_${k}"></span></div><div class="track"><div class="fill" id="bar_${k}" style="background:${c}"></div></div></div>`).join('') +
+    '<div class="bar" id="down" style="display:none;color:#a0a8b8">🌧️ Runterkommen. Essen, Wasser, Zeit.</div>' +
     '<div class="bar" id="munch" style="display:none;color:#ffcf7a">🍔 Fressflash, ab zum Büdchen</div>';
 }
 let hudT = 0;
@@ -3617,7 +3769,11 @@ function updateHUD(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = .25;
   $('loc').textContent = locationName();
   const m = Math.floor(GAME.clock) % 1440; $('clock').textContent = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')} Uhr`;
-  for (const [k, f] of [['alc', alcStage], ['thc', thcStage], ['nic', nicStage]]) { $('bar_' + k).style.width = Math.min(100, SUB[k].l) + '%'; $('st_' + k).textContent = f(SUB[k].l); }
+  for (const [k, , , f, always] of SUBDEF) {
+    $('bar_' + k).style.width = Math.min(100, SUB[k].l) + '%'; $('st_' + k).textContent = f(SUB[k].l);
+    if (!always) $('row_' + k).style.display = SUB[k].l > .5 || SUB[k].s > .5 ? 'block' : 'none';
+  }
+  $('down').style.display = FX.down > .25 ? 'block' : 'none';
   $('munch').style.display = GAME.munch > 50 ? 'block' : 'none';
   $('now').innerHTML = Sound.nowPlaying();
   const a = Menu.open || AI.typing || AI.listening ? null : currentAct(); const pr = $('prompt');
@@ -3874,6 +4030,7 @@ addEventListener('keydown', e => {
   }
   else if (e.code === 'KeyM') { Sound.streetOn = !Sound.streetOn; thought(Sound.streetOn ? 'Kopfhörer rein.' : 'Kopfhörer raus.', 2); }
   else if (e.code === 'KeyN') { (GAME.inside ? GAME.inside.channel : Sound.street).next(); }
+  else if (e.code === 'KeyI') inventoryMenu();
   else if (e.code === 'KeyV') { CAM.third = !CAM.third; CAM.k = .2; }
   else if (e.code === 'KeyH') { const h = $('hint'); h.style.display = h.style.display === 'none' ? 'block' : 'none'; }
 });
@@ -3917,6 +4074,7 @@ $('play').textContent = 'Los geht\'s ▶'; $('play').disabled = !$('age18').chec
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .7, .55, .8); composer.addPass(bloom);
+const afterimage = new AfterimagePass(0); afterimage.enabled = false; composer.addPass(afterimage);   // Nachzieh-Spuren bei Pilzen/LSD
 const fxPass = new ShaderPass(RauschShader); composer.addPass(fxPass);
 composer.addPass(new OutputPass());
 const gradePass = new ShaderPass(GradeShader); composer.addPass(gradePass);
@@ -3933,7 +4091,7 @@ function frame() {
   else { BEAT.bpm = ch ? GEN[ch.genre].bpm : 120; const b = t * BEAT.bpm / 60; BEAT.beat = Math.floor(b); BEAT.phase = b - BEAT.beat; }
   if (GAME.started && (controls.isLocked || GAME.noLock)) { updateSubstances(dt); updateEvents(dt, t); }
   updatePlayer(dt, t); updateHand(dt); updateSmoke(dt); updateLights(dt, t);
-  const npcDt = dt * (1 - FX.thc * .35); NPC_DT = npcDt;
+  const npcDt = dt * (1 - FX.thc * .35) * (1 - FX.psi * .35) * (1 + FX.coke * .3); NPC_DT = npcDt;
   camera.getWorldPosition(CAMPOS); camera.getWorldDirection(CAMDIR); CAMDIR.y = 0; CAMDIR.normalize();
   if (GAME.inside) { updateIndoorCrowd(npcDt, t); updateInteriorAnims(dt, t); }
   updateStreetCrowd(npcDt, t, P.x, P.z);
@@ -3959,13 +4117,15 @@ function frame() {
   if (GAME.mapOpen) drawBigMap();
   const u = fxPass.uniforms;
   u.uTime.value = t; u.uAlc.value = FX.alc; u.uThc.value = FX.thc; u.uNic.value = FX.nic * .8; u.uFade.value = GAME.fade;
+  u.uPsi.value = FX.psi; u.uLsd.value = FX.lsd; u.uMdma.value = FX.mdma; u.uCoke.value = FX.coke; u.uN2o.value = FX.n2o; u.uDown.value = FX.down; TRIP.value = Math.max(FX.psi, FX.lsd);
+  const trails = Math.max(FX.psi, FX.lsd, FX.n2o * .7); afterimage.enabled = trails > .08; afterimage.uniforms.damp.value = .8 + .17 * trails;
   u.uPara.value = FX.para; u.uBlink.value = FX.blink; u.uTint.value.copy(FX.tint); u.uTintAmt.value = FX.tintAmt; u.uFlash.value = FX.flash;
-  bloom.strength = .68 + FX.thc * .55 + (GAME.inside ? .2 : 0); bloom.radius = .45 + FX.thc * .3;
+  bloom.strength = .68 + FX.thc * .55 + FX.mdma * .5 + Math.max(FX.psi, FX.lsd) * .2 + (GAME.inside ? .2 : 0); bloom.radius = .45 + FX.thc * .3;
   gradePass.uniforms.uTime.value = t; gradePass.uniforms.uRes.value.set(innerWidth, innerHeight);
   composer.render();
 }
 frame();
-window.__game = { openTyping, aiTarget, aiTalk, AI, CARS, getTram: () => tram, KASE, SHIPS, startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
+window.__game = { FX, consume, inventoryMenu, openTyping, aiTarget, aiTalk, AI, CARS, getTram: () => tram, KASE, SHIPS, startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
 </script>
 </body>
 </html>

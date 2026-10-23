@@ -39,8 +39,12 @@ Phase 6 fertig: `AI` – T halten = Web Speech API (de-DE), Enter = Texteingabe 
 `persona(o)` baut die Rolle, `situation()` den Zustand des Spielers; Verlauf je NPC in `o.chat` (nur anhängen, nie kürzen; nach 12 Wechseln neu). Key in localStorage `altstadt-ai-key`.
 Sprachausgabe mit `speechSynthesis`. Ohne Key bleibt alles bei den festen Sätzen.
 
+Phase 7 fertig: neue `SUB`-Einträge psi/lsd/mdma/coke/n2o (+ `FX`, Stufen, `SUBDEF` für die HUD-Balken), Tasche `GAME.inv` + `STUFF`/`consume`/`inventoryMenu` (Taste I),
+Quellen: Kalle (Pilze), `RONNY` in der Mertensgasse (`ronnyMenu`), Büdchen (Lachgas). Effekte im `RauschShader` (uPsi/uLsd/uMdma/uCoke/uN2o/uDown,
+Kaleidoskop, Kantenleuchten), `AfterimagePass` für Spuren, `TRIP` färbt Menschen und Himmel, Ton: `Sound.shelf` (Bass), `echoWet` (Echo), Wah über `lp`.
+Kombis: `FX.load` → Herzrasen/Paranoia, ab 2,75 Absturz mit Sanitätern; `GAME.down` = Runterkommen (Essen/Wasser helfen). KI-Aktionen pilze/pappe/teil/koks_geben.
+
 Offen:
-- **Phase 7:** Magic Mushrooms + weitere Substanzen, Kombi-Effekte
 - Später: Google 3D Tiles, Spotify, bessere NPC-Modelle, echtes Lallen über Mikro
 
 ## Aufbau

@@ -28,6 +28,7 @@ Beim ersten Start braucht der Browser kurz Internet, weil die 3D-Engine (three.j
 | E | Reingehen, bestellen, Leute ansprechen |
 | T (halten) | Mit der Person vor dir reden (Mikro, braucht KI-Key) |
 | Enter | Der Person vor dir was schreiben |
+| I | Tasche: Pilze, LSD-Pappe, Ecstasy, Koks, Lachgas nehmen |
 | 1–9 / Mausrad + Klick | Im Menü auswählen (bestell so oft du willst) |
 | J | Zug vom Joint (gibt's bei Kalle unten am Rhein) |
 | K | Zug von der Kippe |
@@ -35,6 +36,28 @@ Beim ersten Start braucht der Browser kurz Internet, weil die 3D-Engine (three.j
 | M / N | Kopfhörer-Musik an/aus / nächster Track |
 | H | Tasten-Hinweis ein/aus |
 | Esc | Pause |
+
+## Neu in Phase 7: mehr Substanzen
+
+Alles erfunden und bewusst übertrieben, nur ein Spiel, keine echten Infos oder Dosierungen.
+
+- **Wo du was bekommst:** Kalle am Rhein hat jetzt endlich **Pilze**. Für **LSD-Pappe**, **Ecstasy** und **Koks** schickt er dich zu
+  **Ronny**, der im Kapuzenpulli in der **Mertensgasse** an der Wand lehnt. **Lachgas-Ballons** gibt's am **Büdchen**.
+  Mit KI-Key kannst du Kalle und Ronny auch einfach danach fragen.
+- **Taste I** öffnet deine Tasche, daraus nimmst du die Sachen.
+- **Pilze:** kommen langsam, dann atmen die Wände, Farben fließen ins Lila-Pink, Leute und Himmel schimmern bunt, die Musik hallt nach,
+  die Welt wird langsamer.
+- **LSD:** hält ewig. Farben wandern durchs ganze Spektrum, Kanten leuchten, Muster auf dunklen Flächen, alles zieht Spuren.
+  Zusammen mit Pilzen wird's ein Kaleidoskop.
+- **Ecstasy:** alles warm und glänzend, mehr Bass, du liebst alle. Bleibst du stehen, fängt deine Figur an zu tanzen.
+  Danach kommt das **Runterkommen**: alles grau, bis Essen, Wasser oder Zeit helfen.
+- **Koks:** kurz und heftig. Du läufst schneller, alles wird hart und klar, Tunnelblick, Herzrasen, große Gedanken.
+  Man fühlt sich nüchterner, als man ist (der Alkohol ist trotzdem da).
+- **Lachgas:** 30 Sekunden wah-wah-wah im Bild und im Ton.
+- **Kombis:** Gras verstärkt Pilze und LSD, Ecstasy mit Alkohol macht Durst, wer zu viel durcheinander nimmt, kriegt Herzrasen
+  und Paranoia, und ab einem Punkt ist **Absturz**: Die Sanitäter setzen dich an den Rhein und geben dir Wasser.
+- **Die Welt merkt's:** Leute lästern („Der streichelt die Hauswand“), die Polizei spricht dich an, die Türsteher lassen dich
+  nicht rein, wenn du zu drüber bist, und im KI-Gespräch wissen die Leute genau, was mit dir los ist.
 
 ## Neu in Phase 6: freie KI-Gespräche
 
@@ -138,6 +161,7 @@ den Ordner `musik` aus. Die Songs bleiben nur auf deinem Rechner und werden nich
 - ~~Phase 4: Mikrofon~~ erledigt.
 - ~~Phase 5: Locations und Straßen~~ erledigt.
 - ~~Phase 6: freie KI-Gespräche~~ erledigt.
+- ~~Phase 7: weitere Substanzen~~ erledigt.
 - **Phase 7:** Magic Mushrooms und weitere Substanzen, Kombi-Effekte.
 - **Später:** Google Photorealistic 3D Tiles (Maps-Key) als echte Kulisse, Spotify als Musikquelle (Premium + Developer-App).
 
