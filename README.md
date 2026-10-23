@@ -26,6 +26,8 @@ Beim ersten Start braucht der Browser kurz Internet, weil die 3D-Engine (three.j
 | Tab | Große Karte: Ziel anklicken, dann wirst du hingeführt |
 | V | Kamera: hinter der Figur (GTA) oder Ego-Sicht |
 | E | Reingehen, bestellen, Leute ansprechen |
+| T (halten) | Mit der Person vor dir reden (Mikro, braucht KI-Key) |
+| Enter | Der Person vor dir was schreiben |
 | 1–9 / Mausrad + Klick | Im Menü auswählen (bestell so oft du willst) |
 | J | Zug vom Joint (gibt's bei Kalle unten am Rhein) |
 | K | Zug von der Kippe |
@@ -33,6 +35,33 @@ Beim ersten Start braucht der Browser kurz Internet, weil die 3D-Engine (three.j
 | M / N | Kopfhörer-Musik an/aus / nächster Track |
 | H | Tasten-Hinweis ein/aus |
 | Esc | Pause |
+
+## Neu in Phase 6: freie KI-Gespräche
+
+Mit einem eigenen **Claude-API-Key** kannst du mit jeder Person im Spiel frei reden: mit Kalle, dem Köbes, Lara,
+den Türstehern, der Polizei, dem JGA, irgendwem auf der Straße.
+
+1. Auf **console.anthropic.com** ein Konto anlegen, Guthaben aufladen (ein paar Euro reichen lange, pro Antwort etwa ein Cent)
+   und unter „API Keys“ einen Key erstellen.
+2. Im Startbildschirm auf **„🧠 KI-Gespräche“** klicken, den Key einfügen, **Speichern**. Er bleibt nur in deinem Browser.
+3. Im Spiel vor jemanden stellen und **T gedrückt halten**, sprechen, loslassen. Oder **Enter** drücken und tippen.
+
+Die Person antwortet als Sprechblase und mit Stimme. Sie weiß, wie spät es ist, wo sie ist und wie voll oder bekifft du bist,
+und merkt, ob du schreist oder flüsterst. Gespräche können was auslösen: Kalle gibt dir Joints, der Türsteher lässt dich rein
+(oder nicht), der Köbes bringt dir dein Alt, der JGA gibt einen aus. Spracherkennung klappt in Chrome/Edge und am besten mit
+`start-windows.bat` / `start-mac.command`. Ohne Key antworten die Leute wie bisher mit festen Sätzen.
+
+## Neu in Phase 5 (Teil 2): Rhein, Verkehr, Ratinger Straße
+
+- **Kasematten** am Rheinufer: Bar-Reihe mit Terrassen, Bierbänken und Heizpilzen. **Kasematte 7** ist begehbar (Backstein-Gewölbe).
+- **Rheinturm Sky Lounge:** Unten rein, Aufzug hoch, und auf 168 m über die Lichter von Düsseldorf schauen.
+- **Schiffe:** Ein beleuchtetes Partyschiff mit Musik und Leuten an Deck fährt den Rhein rauf und runter, dazu ein Frachter.
+- **Verkehr am Rand der Altstadt:** Autos mit Scheinwerfern, Taxis (mit Taxistand an der Heinrich-Heine-Allee) und eine Straßenbahn.
+  Sie bremsen, wenn du vor ihnen stehst, und hupen bzw. klingeln.
+- **Ratinger Straße** mit Lichterketten und der Rock-Kneipe **Zum Schrägen Vogel** mit Live-Band.
+- **Details:** Mülleimer, Fahrräder, Bierkästen, leere Flaschen, blaue Straßenschilder, Leute als Silhouetten in den Fenstern.
+- **Die Nacht vergeht:** Ab 3 Uhr wird es leerer und mehr Leute torkeln heim, ab 5 Uhr dämmert es über dem Rhein.
+- **Einstellungen im Startbildschirm:** Menge an Leuten (wenig/mittel/viel) und Grafik (schnell/schön) für schwächere Rechner.
 
 ## Neu in Phase 5: mehr Altstadt
 
@@ -107,8 +136,8 @@ den Ordner `musik` aus. Die Songs bleiben nur auf deinem Rechner und werden nich
 ## Nächste Phasen
 
 - ~~Phase 4: Mikrofon~~ erledigt.
-- **Phase 5:** erster Ausbau erledigt (siehe oben), geht beliebig weiter.
-- **Phase 6:** Freie KI-Gespräche mit Köbes, Lara, Emre, Kalle und den anderen über Sprache. Braucht einen eigenen API-Key (z. B. Claude API).
+- ~~Phase 5: Locations und Straßen~~ erledigt.
+- ~~Phase 6: freie KI-Gespräche~~ erledigt.
 - **Phase 7:** Magic Mushrooms und weitere Substanzen, Kombi-Effekte.
 - **Später:** Google Photorealistic 3D Tiles (Maps-Key) als echte Kulisse, Spotify als Musikquelle (Premium + Developer-App).
 

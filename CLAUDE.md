@@ -28,12 +28,18 @@ Phase 1 bis 4 fertig:
 Dazu „Altstadt am Wochenende“: ~1.500 NPCs, Third-Person-Kamera (V wechselt), GTA-Farblook, Karte (Tab) mit A*-Navigation,
 Sprechblasen, Anrempeln, NPCs ansprechen (E), Lichterketten, Fässer/Stehtische, Sitzstufen am Rhein, nasses Pflaster.
 
-Phase 5 (erster Teil): Irish Pub, Karaoke-Bar (`KARAOKE`, `SONGS` mit eigenen Texten), Imbiss; Locations können statt `at` (lat/lon) auch `xz` haben.
+Phase 5 fertig, Teil 1: Irish Pub, Karaoke-Bar (`KARAOKE`, `SONGS` mit eigenen Texten), Imbiss; Locations können statt `at` (lat/lon) auch `xz` haben.
 Straßenmusiker (`BUSKER`, Genre `busker`), Polizei (`o.police`), Rosenverkäufer (`o.rose`, `roseSeller`), JGA (`o.jga`), Gesimse in `buildCity`, `hangingSign`.
+Teil 2: Kasematten (`KASE`, als Gebäude in `prepBuildings`), Rheinturm Sky Lounge (Innenraum mit `ox/oy/oz`, `round`, `view` = Stadt bleibt sichtbar),
+Schiffe (`SHIPS`, `shipCrowd`, Partyschiff-Musik über `SHIP_POS`), Verkehr (`roadChains`, `CARS`, `tram`), Rock-Kneipe mit Band (`act` drum/guitar, `makeGuitar`),
+Kleinkram + Straßenschilder in `buildStreetProps`, Fenster-Silhouetten im Fassaden-Shader, Uhrzeit (`TOD`: ab 3 Uhr weniger Leute, ab 5 Uhr `DAWN`), Einstellungen `Q.crowd` + Pixelratio.
+
+Phase 6 fertig: `AI` – T halten = Web Speech API (de-DE), Enter = Texteingabe → `aiTalk` → `@anthropic-ai/sdk@0.133.0` per Importmap (jsDelivr, erst beim ersten Gespräch geladen),
+`dangerouslyAllowBrowser`, Modell `claude-opus-5-5`, effort low, `fallbacks: 'default'` (Beta `server-side-fallback-2026-07-01`), strukturierte Antwort (`AI_SCHEMA`: say/mood/action/serve).
+`persona(o)` baut die Rolle, `situation()` den Zustand des Spielers; Verlauf je NPC in `o.chat` (nur anhängen, nie kürzen; nach 12 Wechseln neu). Key in localStorage `altstadt-ai-key`.
+Sprachausgabe mit `speechSynthesis`. Ohne Key bleibt alles bei den festen Sätzen.
 
 Offen:
-- **Phase 5 weiter:** Locations/Straßen ausbauen
-- **Phase 6:** freie KI-Gespräche (Spracherkennung → Claude API mit eigenem Key des Nutzers → Sprachausgabe), NPC kennt den Pegel des Spielers
 - **Phase 7:** Magic Mushrooms + weitere Substanzen, Kombi-Effekte
 - Später: Google 3D Tiles, Spotify, bessere NPC-Modelle, echtes Lallen über Mikro
 
@@ -61,5 +67,6 @@ also für Screenshots Zustände direkt über `__game` setzen. Echte Performance 
 Abblenden (z. B. `enterVenue`) dauert dort 30 bis 50 Sekunden, weil `dt` pro Frame auf 0,05 begrenzt ist.
 Mikro testen: über `python3 -m http.server 8047` laden, Chromium mit `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`,
 Pegel simulieren durch Überschreiben von `__game.MIC.an.getFloatTimeDomainData`.
+KI testen: jsDelivr-Dateien lokal spiegeln und `https://api.anthropic.com/**` per `page.route` mit einer erfundenen Antwort beantworten (kein echter Key).
 
 Kartendaten © OpenStreetMap-Mitwirkende (ODbL).

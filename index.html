@@ -81,13 +81,20 @@
   #micbar { height:100%; width:0; background:#666; }
   #karaoke { position:absolute; left:50%; bottom:20%; transform:translateX(-50%); text-align:center; display:none; background:#0a0418d0; padding:12px 24px; border-radius:14px; border:1px solid #ff5ae080; }
   #karaoke .kt { color:#ff5ae0; font-weight:800; font-size:14px; } #karaoke .kl { color:#ffe04a; font-size:26px; font-weight:800; margin:6px 0; } #karaoke .kn { color:#a9a3b5; font-size:16px; }
+  #talkbox { position:absolute; left:50%; bottom:24%; transform:translateX(-50%); width:min(560px,90vw); background:#0c0a12e0; border:1px solid #ff3d9a80;
+    border-radius:14px; padding:10px 14px; display:none; pointer-events:auto; font-size:16px; text-align:center; }
+  #talkbox .tb-who { color:var(--amber); font-weight:700; font-size:13px; margin-bottom:6px; }
+  #talkbox input { width:100%; font-size:16px; padding:9px 12px; border-radius:10px; border:1px solid #ffffff40; background:#1a1622; color:var(--fg); }
+  .aibox { margin:10px 0; font-size:14px; color:var(--dim); } .aibox summary { cursor:pointer; color:var(--fg); font-weight:700; }
+  .aibox input { font-size:14px; padding:10px; border-radius:10px; border:1px solid #ffffff30; background:#1a1622; color:var(--fg); }
   #err { position:fixed; left:10px; bottom:10px; z-index:99; max-width:70vw; background:#400; color:#fff; font:12px monospace; padding:8px; display:none; white-space:pre-wrap; }
   #loading { position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center; background:#000; font-size:20px; color:var(--dim); }
 </style>
 <script type="importmap">
 { "imports": {
   "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+  "@anthropic-ai/sdk": "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.133.0/+esm"
 } }
 </script>
 <script src="data/altstadt.js"></script>
@@ -106,6 +113,14 @@
       <span>👥 Leute: <select id="qCrowd"><option value="0.35">wenig (schwacher Rechner)</option><option value="0.65">mittel</option><option value="1" selected>viel (Wochenende!)</option></select></span>
       <span>🖥️ Grafik: <select id="qGfx"><option value="1">schnell</option><option value="1.5" selected>schön</option></select></span>
     </div>
+    <details class="aibox"><summary>🧠 KI-Gespräche mit den Leuten (optional, eigener Claude-API-Key)</summary>
+      <p>Mit Key kannst du mit allen frei reden: <b>T</b> gedrückt halten und sprechen, oder <b>Enter</b> und tippen. Claude spielt die Person und antwortet,
+        die Antwort wird vorgelesen. Den Key bekommst du auf <b>console.anthropic.com</b> (Konto mit Guthaben nötig, pro Antwort ungefähr ein Cent).
+        Der Key bleibt nur in diesem Browser gespeichert und geht nur an Anthropic.</p>
+      <div class="row"><input type="password" id="aiKeyIn" placeholder="sk-ant-..." autocomplete="off" style="flex:1;min-width:220px">
+        <button id="aiKeySave">Speichern</button><button id="aiKeyDel">Löschen</button></div>
+      <div id="aiKeyInfo" class="note"></div>
+    </details>
     <label class="chk"><input type="checkbox" id="useMic"> 🎤 Mikrofon benutzen: Leute hören dich, reagieren auf Reden und Schreien (Kopfhörer empfohlen)</label>
     <div class="row">
       <label class="btn" for="folder">🎵 Musik-Ordner wählen (optional)</label>
@@ -149,8 +164,9 @@
   <canvas id="mini" width="190" height="190"></canvas>
   <div id="nav"></div>
   <div id="karaoke"></div>
+  <div id="talkbox"></div>
   <div id="micbox"><div id="micst">🎤</div><div class="track"><div id="micbar"></div></div></div>
-  <div id="hint">Tab Karte · V Kamera · M Musik · N nächster Track · J Joint · K Kippe</div>
+  <div id="hint">T halten: reden · Enter: tippen · Tab Karte · V Kamera · M Musik · N nächster Track · J Joint · K Kippe</div>
 </div>
 <div id="bigmap">
   <canvas id="mapc"></canvas>
@@ -2654,7 +2670,7 @@ const Sound = {
 const SUB = { alc: { s: 0, l: 0, abs: 16, el: .05 }, thc: { s: 0, l: 0, abs: 9, el: .032 }, nic: { s: 0, l: 0, abs: 2.5, el: .7 } };
 const FX = { alc: 0, thc: 0, nic: 0, para: 0, blink: 0, tint: new THREE.Color(0x40ff40), tintAmt: 0, flash: 0 };
 const GAME = { started: false, inside: null, clock: 22 * 60 + 47, joints: false, cigs: true, shisha: null, koebesAlt: false, koebesT: -1,
-  banned: {}, munch: 0, fed: 0, fade: 0, fadeTo: 0, fadeSpeed: 3, fadeCb: null, blackout: false, haze: 0, lastHeart: 0, thoughtT: 8, hintsShown: {} };
+  banned: {}, vip: {}, munch: 0, fed: 0, fade: 0, fadeTo: 0, fadeSpeed: 3, fadeCb: null, blackout: false, haze: 0, lastHeart: 0, thoughtT: 8, hintsShown: {} };
 function updateSubstances(dt) {
   for (const k in SUB) {
     const S = SUB[k], a = S.s * (1 - Math.exp(-dt / S.abs));
@@ -2800,7 +2816,7 @@ function updateAvatar(dt, t) {
   me.flush();
 }
 function updatePlayer(dt, t) {
-  const blocked = Menu.open || GAME.mapOpen || GAME.fade > .5 || !GAME.started;
+  const blocked = Menu.open || GAME.mapOpen || AI.typing || GAME.fade > .5 || !GAME.started;
   euler.setFromQuaternion(head.quaternion, 'YXZ');
   if (FX.alc > .2 || FX.thc > .5) { euler.y += dt * wobble(t * .45, 3) * (Math.pow(FX.alc, 2) * .9 + FX.thc * .12); head.quaternion.setFromEuler(euler); }
   controls.pointerSpeed = 1 - .35 * FX.alc;
@@ -2951,13 +2967,13 @@ function currentAct() {
   for (const a of list) { const d = Math.hypot(a.x - P.x, a.z - P.z); if (d < a.r && d < bd) { bd = d; best = a; } }
   if (KARAOKE.on && best && best.label.startsWith('Auf die Bühne')) best = null;
   if (!best) { const o = nearestPerson(); if (o) best = o.rose && o.approach ? { label: 'Rose kaufen 🌹', act: () => { o.bought = true; thought(pick(['Eine Rose. Für wen eigentlich?', 'Die schenk ich Kalle.', 'Romantisch. Glaub ich.'])); } }
-    : { label: o.bouncer ? 'Türsteher ansprechen' : o.police ? 'Polizei ansprechen' : 'Ansprechen', act: () => talkTo(o) }; }
+    : { label: (o.bouncer ? 'Türsteher ansprechen' : o.police ? 'Polizei ansprechen' : 'Ansprechen') + (aiKey() ? ' <small>(T halten: reden)</small>' : ''), act: () => aiKey() ? openTyping(o) : talkTo(o) }; }
   return best;
 }
 function fadeThen(cb, speed = 3) { GAME.fadeTo = 1; GAME.fadeSpeed = speed; GAME.fadeCb = cb; }
 function enterVenue(v) {
-  if (v.club && (GAME.banned[v.id] || 0) > TIME.value) { say('Türsteher', pick(['Du schon wieder? Nee.', 'Erst rumbrüllen, dann rein wollen? Nix da.', 'Komm in \'ner halben Stunde wieder.'])); return; }
-  if (v.club && SUB.alc.l > 78) { say('Türsteher', pick(['Heute nicht, Junge. Komm wieder, wenn du geradeaus laufen kannst.', 'Nee, nee, nee. So kommst du hier nicht rein.', 'Erstmal ein Wasser, dann reden wir.'])); return; }
+  if (v.club && !GAME.vip[v.id] && (GAME.banned[v.id] || 0) > TIME.value) { say('Türsteher', pick(['Du schon wieder? Nee.', 'Erst rumbrüllen, dann rein wollen? Nix da.', 'Komm in \'ner halben Stunde wieder.'])); return; }
+  if (v.club && !GAME.vip[v.id] && SUB.alc.l > 78) { say('Türsteher', pick(['Heute nicht, Junge. Komm wieder, wenn du geradeaus laufen kannst.', 'Nee, nee, nee. So kommst du hier nicht rein.', 'Erstmal ein Wasser, dann reden wir.'])); return; }
   Sound.door();
   fadeThen(() => {
     GAME.inside = v; const it = v.interior;
@@ -3192,6 +3208,165 @@ function updateTimeOfDay() {
 }
 
 // =====================================================================
+//  Phase 6: Freie KI-Gespräche. T halten = sprechen (Spracherkennung), Enter = tippen.
+//  Claude spielt die Person, Antwort kommt als Sprechblase + Sprachausgabe.
+//  Der API-Key des Spielers bleibt in seinem Browser (localStorage) und geht nur an api.anthropic.com.
+// =====================================================================
+const AI = { client: null, busy: false, rec: null, listening: false, typing: false, target: null, peak: 'reden', interim: '' };
+const AI_MODEL = 'claude-opus-5-5';
+const aiKey = () => { try { return localStorage.getItem('altstadt-ai-key') || ''; } catch (e) { return ''; } };
+const AI_SYSTEM = `Du spielst eine Figur in einem erfundenen, humorvollen Open-World-Spiel (ab 18) über eine Partynacht in der Düsseldorfer Altstadt.
+Der Spieler steht vor dir und spricht dich direkt an. Sein Text kommt aus einer Spracherkennung und kann Fehler enthalten; wenn er betrunken ist, lallt er.
+Antworte immer auf Deutsch, als diese Figur, locker und so, wie man nachts in der Altstadt redet: 1 bis 2 kurze Sätze, höchstens etwa 30 Wörter.
+Keine Regieanweisungen, keine Sternchen, keine Emojis, keine Aufzählungen. Bleib in der Rolle, auch wenn der Spieler Quatsch erzählt.
+Reagiere auf seinen Zustand (betrunken, bekifft, laut geschrien, geflüstert) und auf die Situation. Alles ist Fiktion. Gib keine echten Tipps, wo man Drogen bekommt, und keine Dosierungen.
+Ist der Spieler beleidigend oder übergriffig, reagier wie ein echter Mensch: genervt, abweisend, oder du gehst weg.
+Wähle "action" nur, wenn es wirklich passt (meistens "nichts"). "serve" ist die Nummer eines Getränks von deiner Karte, wenn du dem Spieler gerade etwas bringst, sonst -1.`;
+const AI_SCHEMA = { type: 'object', additionalProperties: false, required: ['say', 'mood', 'action', 'serve'], properties: {
+  say: { type: 'string', description: 'Was die Figur sagt' },
+  mood: { type: 'string', enum: ['freundlich', 'lustig', 'genervt', 'wütend', 'flirty', 'besorgt', 'neutral'] },
+  action: { type: 'string', enum: ['nichts', 'bier_ausgeben', 'shot_ausgeben', 'joint_geben', 'reinlassen', 'abweisen', 'weggehen'] },
+  serve: { type: 'integer', description: 'Nummer des Getränks von der Karte oder -1' } } };
+const FIRST_M = ['Marco', 'Kevin', 'Tobi', 'Dennis', 'Murat', 'Jan', 'Lukas', 'Can', 'Sven', 'Ali', 'Niklas', 'Patrick', 'Tim', 'Hakan', 'Felix', 'Jonas'];
+const FIRST_F = ['Lena', 'Jessi', 'Sarah', 'Aylin', 'Laura', 'Nina', 'Mia', 'Chantal', 'Sophie', 'Elif', 'Anna', 'Vanessa', 'Julia', 'Melli', 'Lea'];
+const PROP_NAME = ['nichts', 'eine Flasche Bier', 'ein Glas Altbier', 'eine Kippe', 'sein Handy'];
+function persona(o) {
+  if (!o.aiName) o.aiName = pick(o.fem ? FIRST_F : FIRST_M) + ', ' + (19 + Math.floor(((o.seed * 13.7) % 1) * 26));
+  const v = GAME.inside;
+  if (o.kalle) return 'Du bist Kalle, ein tiefenentspannter Kiffer Mitte 50 mit langen Haaren und Bart. Du sitzt seit Jahren jede Nacht auf deiner Bank an der Rheinuferpromenade, redest langsam und philosophisch über den Rhein und das Leben und nennst jeden "Bruder". Du hast immer Joints dabei und teilst gern (action "joint_geben"). Du magst Heinz vom Brauhaus und Emre von der Shisha-Bar.';
+  if (o.host && v) return `Du bist ${v.host.name} in "${v.name}" (${v.short}), einer erfundenen Location in der Düsseldorfer Altstadt. So redest du: "${Object.values(v.host.lines).flat().slice(0, 5).join('" / "')}". ` +
+    `Deine Karte: ${v.menu.map((m, i) => `${i}: ${m.n} (${m.d})`).join(', ')}. Bestellt der Gast etwas, bring es ihm ("serve" = Nummer). Bezahlt wird später, Geld ist kein Thema.`;
+  if (o.band) return 'Du spielst in einer Rockband in der Kneipe "Zum Schrägen Vogel" auf der Ratinger Straße, gerade ist kurz Pause zwischen zwei Songs. Du bist verschwitzt, gut drauf und ein bisschen eitel.';
+  if (o.bouncer) { const club = VENUES.find(c => c.club && Math.hypot(c.door.x - o.x, c.door.z - o.z) < 6); return `Du bist Türsteher vor dem Club "${club ? club.name : 'Bunker 211'}": breit, wortkarg, cool, aber fair. Du entscheidest, wer reinkommt. Zu Betrunkene, Pöbler und Leute, die rumschreien, kommen nicht rein ("abweisen"). Wer nett und halbwegs nüchtern ist oder dich überzeugt, darf rein ("reinlassen").`; }
+  if (o.police) return 'Du bist Polizist(in) auf Streife in der Altstadt. Freundlich, sachlich, mit trockenem Humor. Du achtest darauf, dass alles friedlich bleibt, und gibst niemals Alkohol oder Drogen aus.';
+  if (o.rose) return 'Du verkaufst Rosen in der Altstadt, ziehst von Kneipe zu Kneipe und bist sehr hartnäckig, aber herzlich. Eine Rose kostet fünf Euro.';
+  if (o.busker) return 'Du bist Straßenmusiker mit Gitarre auf der Bolkerstraße. Du spielst Coversongs, freust dich über jedes Publikum und jeden Euro im Gitarrenkoffer.';
+  if (o.jga) return `Du heißt ${o.aiName.split(',')[0]} und feierst gerade einen Junggesellinnenabschied (JGA) mit deinen Mädels in pinken Shirts${o.col[0] === 0xf4f4f4 ? '. Du bist die Braut, ganz in Weiß' : ''}. Ihr seid laut, albern und schon gut angetrunken. Ihr gebt gern einen Kurzen aus ("shot_ausgeben").`;
+  const where = v ? `in "${v.name}" (${v.short})` : `draußen in der Altstadt (${locationName()})`;
+  return `Du bist ${o.aiName} Jahre alt und feierst heute Nacht ${where}. ${o.drunk ? 'Du bist ziemlich betrunken.' : 'Du bist gut drauf.'} Gerade hast du ${PROP_NAME[o.prop || 0]} in der Hand${o.lead || o.fixed ? ' und bist mit Freunden unterwegs' : ''}. Denk dir einen Charakter aus und bleib dabei (Job, woher, warum du hier bist).`;
+}
+function situation(loud) {
+  const m = Math.floor(GAME.clock) % 1440, time = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const st = [`Uhrzeit ${time}`, `Spieler: Alkohol ${alcStage(SUB.alc.l)}, Gras ${SUB.thc.l < 6 ? 'nichts' : thcStage(SUB.thc.l)}`];
+  if (loud === 'schreien') st.push('er hat dich laut angeschrien'); else if (loud === 'flüstern') st.push('er hat sehr leise geflüstert');
+  if (GAME.munch > 50) st.push('er hat sichtbar Fressflash');
+  if (FX.para > .2) st.push('er wirkt paranoid');
+  return '[Situation: ' + st.join('; ') + ']';
+}
+function aiTarget() {
+  if (GAME.inside) {
+    let best = null, bd = 4;
+    for (const o of indoor.list) { const d = Math.hypot(o.x - P.x, o.z - P.z) - (o.host ? 1.5 : 0); if (d < bd) { bd = d; best = o; } }
+    return best;
+  }
+  const kalle = street.list.find(o => o.kalle);
+  if (kalle && Math.hypot(kalle.x - P.x, kalle.z - P.z) < 4) return kalle;
+  return nearestPerson(3.5);
+}
+async function aiClient() {
+  if (AI.client) return AI.client;
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  AI.Anthropic = Anthropic;
+  AI.client = new Anthropic({ apiKey: aiKey(), dangerouslyAllowBrowser: true, maxRetries: 1 });
+  return AI.client;
+}
+async function aiTalk(o, text, loud = 'reden') {
+  if (!aiKey()) { talkTo(o); return; }
+  if (AI.busy) return;
+  AI.busy = true; o.lookT = 30; o.aiT = TIME.value;
+  const said = SUB.alc.l > 45 ? slur(text) : text;
+  showMsg(`<span class="who">Du:</span> „${said}“`, 3.5);
+  npcSay(o, '…', 30);
+  if (!o.chat || o.chat.length > 24) o.chat = [];   // nach 12 Wechseln fängt das Gespräch neu an (nie Verlauf kürzen)
+  const msgs = [...o.chat, { role: 'user', content: situation(loud) + '\nSpieler: ' + said }];
+  try {
+    const client = await aiClient();
+    const res = await client.beta.messages.create({
+      model: AI_MODEL, max_tokens: 2000,
+      betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: AI_SCHEMA } },
+      system: AI_SYSTEM + '\n\nDeine Figur: ' + persona(o),
+      messages: msgs,
+    });
+    if (res.stop_reason === 'refusal') { npcSay(o, pick(['Äh... lass mal.', 'Darauf sag ich nix.', 'Komm, anderes Thema.']), 3); return; }
+    const txt = res.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    const out = JSON.parse(txt);
+    o.chat = [...msgs, { role: 'assistant', content: res.content }];
+    npcSay(o, out.say, clamp(2.5 + out.say.length / 14, 3, 9));
+    speak(o, out.say, out.mood);
+    aiAction(o, out);
+  } catch (e) {
+    const A = AI.Anthropic;
+    const msg = A && e instanceof A.AuthenticationError ? 'Der API-Key stimmt nicht. Im Startbildschirm unter „KI-Gespräche“ neu eintragen.'
+      : A && e instanceof A.PermissionDeniedError ? 'Der API-Key darf dieses Modell nicht benutzen (Konto prüfen).'
+      : A && e instanceof A.RateLimitError ? 'Zu viele Anfragen auf einmal, kurz warten.'
+      : A && e instanceof A.APIConnectionError ? 'Keine Verbindung zu Claude. Internet da?'
+      : A && e instanceof A.APIError && e.status === 400 && /credit|balance/i.test(e.message) ? 'Auf dem Anthropic-Konto ist kein Guthaben mehr.'
+      : 'KI-Fehler: ' + (e.message || e);
+    console.warn('KI:', e); npcSay(o, 'Hä?', 2); showMsg('🧠 ' + msg, 7);
+  } finally { AI.busy = false; }
+}
+function aiAction(o, out) {
+  const v = GAME.inside;
+  if (o.host && v && out.serve >= 0 && v.menu[out.serve]) setTimeout(() => orderItem(v.host, v.menu[out.serve], v), 1200);
+  switch (out.action) {
+    case 'bier_ausgeben': setTimeout(() => drink({ alc: 6, kind: 'beer', col: 0x5a2a0a }), 1200); break;
+    case 'shot_ausgeben': setTimeout(() => drink({ alc: 7, kind: 'shot', col: 0xff4a7a }), 1200); break;
+    case 'joint_geben': if (o.kalle || !o.police) { GAME.joints = true; setTimeout(() => showMsg('Du hast Joints bekommen. <b>[J]</b> ziehen.', 5), 1500); } break;
+    case 'reinlassen': if (o.bouncer) { const c = VENUES.find(c => c.club && Math.hypot(c.door.x - o.x, c.door.z - o.z) < 6); if (c) { GAME.vip[c.id] = true; delete GAME.banned[c.id]; showMsg(`✅ Du darfst ins <b>${c.name}</b>.`, 4); } } break;
+    case 'abweisen': if (o.bouncer) { const c = VENUES.find(c => c.club && Math.hypot(c.door.x - o.x, c.door.z - o.z) < 6); if (c) GAME.banned[c.id] = TIME.value + 60; } break;
+    case 'weggehen': o.lookT = 0; o.ry += Math.PI; if (o.face !== undefined) o.face += Math.PI; break;
+  }
+}
+// Sprachausgabe: jede Person bekommt ihre eigene Stimmlage
+function speak(o, text, mood) {
+  if (!window.speechSynthesis) return;
+  const voices = speechSynthesis.getVoices().filter(v => /^de/i.test(v.lang));
+  const u = new SpeechSynthesisUtterance(text); u.lang = 'de-DE';
+  if (voices.length) {
+    const fem = voices.filter(v => /anna|petra|katja|hedda|helena|vicki|marlene|female|frau|google deutsch/i.test(v.name)), mal = voices.filter(v => /markus|stefan|hans|yannick|conrad|male|mann/i.test(v.name));
+    const pool = (o.fem ? fem : mal).length ? (o.fem ? fem : mal) : voices; u.voice = pool[Math.floor(((o.seed * 5.3) % 1) * pool.length)];
+  }
+  const k = (o.seed * 2.7) % 1;
+  u.pitch = clamp((o.fem ? 1.15 : .85) + (k - .5) * .3 + (o.kalle ? -.2 : 0) + (mood === 'lustig' ? .1 : 0), .5, 1.8);
+  u.rate = clamp(1.05 + (k - .5) * .2 - (o.drunk ? .15 : 0) - (o.kalle ? .25 : 0) + (mood === 'wütend' ? .1 : 0), .6, 1.4);
+  u.volume = clamp(1.2 - Math.hypot(o.x - P.x, o.z - P.z) / 8, .3, 1);
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+// T halten: zuhören
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function startListening() {
+  if (AI.listening || AI.typing || AI.busy) return;
+  const o = aiTarget(); if (!o) { thought('Da ist keiner zum Quatschen. Stell dich vor jemanden.'); return; }
+  if (!SR) { openTyping(o); return; }
+  AI.target = o; AI.interim = ''; AI.peak = 'reden'; AI.listening = true; o.lookT = 10;
+  const rec = AI.rec = new SR(); rec.lang = 'de-DE'; rec.interimResults = true; rec.continuous = true;
+  let final = '';
+  rec.onresult = e => { let it = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) final += e.results[i][0].transcript + ' '; else it += e.results[i][0].transcript; } AI.interim = (final + it).trim(); showTalk('🎙️ ' + (AI.interim || '…')); };
+  rec.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') showMsg('🎙️ Spracherkennung blockiert. Spiel mit <b>start-windows.bat</b> / <b>start-mac.command</b> starten und das Mikro erlauben. Oder <b>Enter</b> drücken und tippen.', 8); };
+  rec.onend = () => { AI.listening = false; hideTalk(); const t = (final || AI.interim).trim(); if (t && AI.target) aiTalk(AI.target, t, AI.peak); };
+  try { rec.start(); showTalk('🎙️ Ich hör zu… (T loslassen zum Senden)'); } catch (e) { AI.listening = false; openTyping(o); }
+}
+function stopListening() { if (AI.rec && AI.listening) AI.rec.stop(); }
+// Enter: tippen
+function openTyping(o = aiTarget()) {
+  if (!o) { thought('Da ist keiner zum Quatschen. Stell dich vor jemanden.'); return; }
+  AI.typing = true; AI.target = o; o.lookT = 30;
+  const box = $('talkbox'); box.style.display = 'block';
+  box.innerHTML = `<div class="tb-who">Du redest mit ${o.kalle ? 'Kalle' : o.host ? GAME.inside.host.name : o.bouncer ? 'dem Türsteher' : 'jemandem'}${aiKey() ? '' : ' <small>(ohne API-Key nur feste Sätze)</small>'}</div><input id="talkin" maxlength="200" placeholder="Was sagst du? Enter = senden, Esc = abbrechen" autocomplete="off">`;
+  for (const k in KEYS) KEYS[k] = false;
+  const inp = $('talkin'); setTimeout(() => inp.focus(), 0);
+  inp.onkeydown = e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { const t = inp.value.trim(); closeTyping(); if (t) aiTalk(o, t, 'reden'); }
+    else if (e.key === 'Escape') closeTyping();
+  };
+}
+function closeTyping() { AI.typing = false; $('talkbox').style.display = 'none'; $('talkbox').innerHTML = ''; }
+function showTalk(t) { const b = $('talkbox'); b.style.display = 'block'; b.textContent = t; }
+function hideTalk() { if (!AI.typing) $('talkbox').style.display = 'none'; }
+
+// =====================================================================
 //  Mikrofon (Phase 4): Lautstärke steuert, wie die Leute reagieren
 // =====================================================================
 const MIC = { on: false, level: 0, db: -100, floor: -62, state: 'still', talkT: 0, quietT: 0, loudT: 0, cool: 0, peak: 'still' };
@@ -3222,6 +3397,7 @@ function updateMic(dt) {
   MIC.level = lerp(MIC.level, clamp(rel / 42), 1 - Math.exp(-dt * 14));
   const st = rel < 9 ? 'still' : rel < 18 ? 'flüstern' : (rel < 31 || db < -26) ? 'reden' : 'schreien';
   MIC.state = st; MIC.cool -= dt;
+  if (AI.listening && RANK[st] > RANK[AI.peak]) AI.peak = st;
   if (st !== 'still') { MIC.talkT += dt; MIC.quietT = 0; if (RANK[st] > RANK[MIC.peak]) MIC.peak = st; }
   else if ((MIC.quietT += dt) > .65 && MIC.talkT > .45) { onUtterance(MIC.peak); MIC.talkT = 0; MIC.peak = 'still'; }
   else if (MIC.quietT > .65) { MIC.talkT = 0; MIC.peak = 'still'; }
@@ -3233,7 +3409,7 @@ function updateMic(dt) {
 }
 // Du hast etwas gesagt (Satz zu Ende)
 function onUtterance(kind) {
-  if (kind === 'schreien' || !GAME.started) return;
+  if (kind === 'schreien' || !GAME.started || AI.listening || AI.busy || (aiKey() && SR)) return;
   const whisper = kind === 'flüstern';
   if (Menu.open && Menu.who) {
     Menu.line = whisper ? 'Hä? Sprich mal lauter, hier ist Musik!' : pick(['Klar, Chef.', 'Hab ich gehört, ja.', 'Sag einfach, was du trinken willst.', 'Haha, du bist mir einer.', 'Erzähl weiter!']);
@@ -3444,7 +3620,7 @@ function updateHUD(dt) {
   for (const [k, f] of [['alc', alcStage], ['thc', thcStage], ['nic', nicStage]]) { $('bar_' + k).style.width = Math.min(100, SUB[k].l) + '%'; $('st_' + k).textContent = f(SUB[k].l); }
   $('munch').style.display = GAME.munch > 50 ? 'block' : 'none';
   $('now').innerHTML = Sound.nowPlaying();
-  const a = Menu.open ? null : currentAct(); const pr = $('prompt');
+  const a = Menu.open || AI.typing || AI.listening ? null : currentAct(); const pr = $('prompt');
   let txt = a ? `<kbd>E</kbd>${a.label}` : '';
   if (!txt && GAME.inside && GAME.shisha && GAME.inside.shisha) txt = `<kbd>F</kbd>Zug von der Shisha <small>(${GAME.shisha})</small>`;
   if (!txt && GAME.koebesAlt) txt = '<kbd>F</kbd>Frisches Alt trinken';
@@ -3674,10 +3850,14 @@ const STREET_LABELS = (() => {
 //  Eingabe
 // =====================================================================
 addEventListener('keydown', e => {
+  if (AI.typing) return;
   KEYS[e.code] = true;
   if (!GAME.started) return;
   if (e.code === 'Tab') { e.preventDefault(); if (!e.repeat) GAME.mapOpen ? closeMap() : openMap(); return; }
   if (GAME.mapOpen) { if (e.code === 'Escape') closeMap(); return; }
+  if (AI.typing) return;
+  if (e.code === 'KeyT' && !e.repeat && !Menu.open) { startListening(); return; }
+  if (e.code === 'Enter' && !Menu.open) { openTyping(); return; }
   if (Menu.open) {
     const n = parseInt(e.key); if (n >= 1 && n <= 9) { Menu.choose(n - 1); return; }
     if (e.code === 'ArrowDown') Menu.move(1); else if (e.code === 'ArrowUp') Menu.move(-1);
@@ -3697,7 +3877,7 @@ addEventListener('keydown', e => {
   else if (e.code === 'KeyV') { CAM.third = !CAM.third; CAM.k = .2; }
   else if (e.code === 'KeyH') { const h = $('hint'); h.style.display = h.style.display === 'none' ? 'block' : 'none'; }
 });
-addEventListener('keyup', e => { KEYS[e.code] = false; });
+addEventListener('keyup', e => { KEYS[e.code] = false; if (e.code === 'KeyT') stopListening(); });
 addEventListener('wheel', e => { if (Menu.open) Menu.move(e.deltaY > 0 ? 1 : -1); });
 addEventListener('mousedown', e => { if (Menu.open && controls.isLocked && e.button === 0) Menu.choose(Menu.sel); });
 controls.addEventListener('lock', () => { $('pause').style.display = 'none'; });
@@ -3705,6 +3885,10 @@ controls.addEventListener('unlock', () => { if (GAME.started && !GAME.mapOpen) {
 document.addEventListener('pointerlockerror', () => { if (GAME.started && !GAME.mapOpen) $('pause').style.display = 'flex'; });
 $('pause').addEventListener('click', () => controls.lock());
 $('age18').addEventListener('change', e => { $('play').disabled = !e.target.checked; });
+const aiKeyInfo = () => { $('aiKeyInfo').textContent = aiKey() ? '✅ Key gespeichert (endet auf …' + aiKey().slice(-4) + '). KI-Gespräche sind an.' : 'Kein Key: Die Leute antworten mit festen Sätzen.'; };
+$('aiKeySave').addEventListener('click', () => { const k = $('aiKeyIn').value.trim(); if (!k) return; try { localStorage.setItem('altstadt-ai-key', k); } catch (e) {} $('aiKeyIn').value = ''; AI.client = null; aiKeyInfo(); });
+$('aiKeyDel').addEventListener('click', () => { try { localStorage.removeItem('altstadt-ai-key'); } catch (e) {} AI.client = null; aiKeyInfo(); });
+aiKeyInfo();
 $('folder').addEventListener('change', e => {
   const n = Sound.setFiles([...e.target.files]);
   const per = Object.entries(FILES).map(([g, l]) => `${g}: ${l.length}`).join(' · ');
@@ -3781,7 +3965,7 @@ function frame() {
   composer.render();
 }
 frame();
-window.__game = { CARS, getTram: () => tram, KASE, SHIPS, startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
+window.__game = { openTyping, aiTarget, aiTalk, AI, CARS, getTram: () => tram, KASE, SHIPS, startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
 </script>
 </body>
 </html>
