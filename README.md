@@ -26,7 +26,7 @@ Beim ersten Start braucht der Browser kurz Internet, weil die 3D-Engine (three.j
 | Tab | Große Karte: Ziel anklicken, dann wirst du hingeführt |
 | V | Kamera: hinter der Figur (GTA) oder Ego-Sicht |
 | E | Reingehen, bestellen, Leute ansprechen |
-| T (halten) | Mit der Person vor dir reden (Mikro, braucht KI-Key) |
+| T (halten) | Mit der Person vor dir reden (Mikro, Gratis-KI oder Claude-Key) |
 | Enter | Der Person vor dir was schreiben |
 | I | Tasche: Pilze, LSD-Pappe, Ecstasy, Koks, Lachgas nehmen |
 | 1–9 / Mausrad + Klick | Im Menü auswählen (bestell so oft du willst) |
@@ -36,6 +36,20 @@ Beim ersten Start braucht der Browser kurz Internet, weil die 3D-Engine (three.j
 | M / N | Kopfhörer-Musik an/aus / nächster Track |
 | H | Tasten-Hinweis ein/aus |
 | Esc | Pause |
+
+## Neu: echte Stimmen und Gratis-KI
+
+- **Alle Leute haben jetzt echte Stimmen**, gratis und ohne Konto: über 170 verschiedene deutsche Stimmen (Frauen und Männer),
+  dazu betrunkene, wütende, flüsternde und müde Varianten. Kalle klingt verpeilt, Betrunkene lallen.
+  Die Stimmen kommen räumlich aus der Richtung der Person und werden leiser, je weiter weg sie ist.
+- **Grüppchen auf der Straße unterhalten sich hörbar miteinander**, bis zu drei Gespräche gleichzeitig.
+- **Gratis-KI-Gehirn:** Ohne API-Key kannst du jetzt trotzdem frei mit allen reden. Ein kleines Sprachmodell läuft direkt auf
+  deinem Rechner (Grafikkarte). Es ist nicht so schlau wie Claude, kostet aber nichts. Wenn es geladen ist,
+  schreibt es auch die Gespräche der Grüppchen.
+- Beim ersten Spielen wird einmalig heruntergeladen: Stimmen ca. 150 MB, KI ca. 1 GB (groß: ca. 2 GB). Danach bleibt alles gespeichert.
+  Dafür das Spiel mit `start-windows.bat` / `start-mac.command` starten (nicht per Doppelklick auf `index.html`) und **Chrome oder Edge** benutzen.
+- Im Startbildschirm unter **„🧠 KI-Gespräche und echte Stimmen“** kannst du das Gehirn wählen (Gratis klein, Gratis groß, Claude, aus)
+  und die Stimmen ausschalten. Unten rechts siehst du, wie weit das Laden ist.
 
 ## Neu in Phase 7: mehr Substanzen
 
@@ -72,7 +86,7 @@ den Türstehern, der Polizei, dem JGA, irgendwem auf der Straße.
 Die Person antwortet als Sprechblase und mit Stimme. Sie weiß, wie spät es ist, wo sie ist und wie voll oder bekifft du bist,
 und merkt, ob du schreist oder flüsterst. Gespräche können was auslösen: Kalle gibt dir Joints, der Türsteher lässt dich rein
 (oder nicht), der Köbes bringt dir dein Alt, der JGA gibt einen aus. Spracherkennung klappt in Chrome/Edge und am besten mit
-`start-windows.bat` / `start-mac.command`. Ohne Key antworten die Leute wie bisher mit festen Sätzen.
+`start-windows.bat` / `start-mac.command`. Ohne Key gibt es jetzt die Gratis-KI (siehe oben).
 
 ## Neu in Phase 5 (Teil 2): Rhein, Verkehr, Ratinger Straße
 
@@ -169,12 +183,15 @@ den Ordner `musik` aus. Die Songs bleiben nur auf deinem Rechner und werden nich
 - ~~Phase 5: Locations und Straßen~~ erledigt.
 - ~~Phase 6: freie KI-Gespräche~~ erledigt.
 - ~~Phase 7: weitere Substanzen~~ erledigt.
-- **Phase 7:** Magic Mushrooms und weitere Substanzen, Kombi-Effekte.
+- ~~Echte Stimmen + Gratis-KI~~ erledigt.
+- **Als Nächstes:** echte 3D-Menschen mit Animationen, Foto-Texturen, Schatten.
 - **Später:** Google Photorealistic 3D Tiles (Maps-Key) als echte Kulisse, Spotify als Musikquelle (Premium + Developer-App).
 
 ## Technik
 
 - Eine einzige Datei `index.html` mit [three.js](https://threejs.org) 0.160 (über unpkg), Web Audio API für Musik und Sounds.
+- Stimmen: [Piper](https://github.com/rhasspy/piper) (Stimmen `de_DE-mls` und `de_DE-thorsten_emotional`) über onnxruntime-web.
+  Gratis-KI: [WebLLM](https://webllm.mlc.ai) mit Qwen2.5 (1,5B/3B), braucht WebGPU.
 - `data/altstadt.js` entsteht mit `tools/osm_to_game.py` aus einem OpenStreetMap-Export (Befehl steht im Skript).
 
 Kartendaten © OpenStreetMap-Mitwirkende, Lizenz [ODbL](https://opendatacommons.org/licenses/odbl/).

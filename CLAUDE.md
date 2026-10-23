@@ -47,7 +47,15 @@ Kombis: `FX.load` → Herzrasen/Paranoia, ab 2,75 Absturz mit Sanitätern; `GAME
 Musik: Internetradio je Genre (`RADIO`, `RADIO_TAGS`/`RADIO_HINT`, `radioSource`/`radioTry`): radio-browser.info-API, nur https-Sender mit CORS (sonst automatisch nächster),
 eine Quelle pro Genre für alle Kanäle, Groove läuft, bis das Radio spielt. Reihenfolge: eigene MP3s > Radio > Groove.
 
+Stimmen + Gratis-KI fertig: `PIPER` (onnxruntime-web 1.18 von cdnjs, Phonemizer aus `@mintplex-labs/piper-tts-web@1.0.5`, Modelle von huggingface
+`diffusionstudio/piper-voices`: `de_DE-mls-medium` mit `VOICE_F`/`VOICE_M` = per Tonhöhe sortierte Sprecher-IDs, `de_DE-thorsten_emotional-medium` für
+drunk/angry/whisper/sleepy/amused). Cache API (`altstadt-piper`), braucht localhost/https. `voiceOf`, `voiceSay` (PannerNode → `Sound.voice`), `updateVoices` (duckt Musik).
+`LOCAL` = WebLLM `@mlc-ai/web-llm@0.2.85` (Qwen2.5 1.5B/3B, WebGPU), `aiMode()` in localStorage `altstadt-ai-mode` (local-s/local-l/claude/off),
+`aiTalk` → `claudeTalk`/`localTalk`/`talkTo`, `aiReady()`. Gruppengespräche `TALKS`/`updateGroupTalks` (max. 3, Pausen in Echtzeit), `DIALOGS` als Vorrat, `groupScript` per LLM.
+Headless: Piper geht (NET=1 + http://localhost:8047), WebLLM nicht (kein WebGPU).
+
 Offen:
+- Als Nächstes: echte 3D-Menschen (Quaternius CC0, skinned + UAL-Animationen), Foto-Texturen, Schatten
 - Später: Google 3D Tiles, Spotify, bessere NPC-Modelle, echtes Lallen über Mikro
 
 ## Aufbau
