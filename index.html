@@ -433,7 +433,22 @@ const TEX = {};
 TEX.plaster = plasterTexture(); TEX.roof = roofTexture(); TEX.stone = stoneTexture();
 TEX.smoke = smokeTexture(); TEX.waterN = waterNormalTexture();
 for (const k of ['cobble', 'cobbleN', 'cobbleR']) TEX[k].repeat.set(.55, .55);
-TEX.paving.repeat.set(.83, .83); TEX.pavingN.repeat.set(.83, .83); TEX.asphalt.repeat.set(.15, .15); TEX.grass.repeat.set(.25, .25); TEX.roof.repeat.set(.25, .25);
+TEX.paving.repeat.set(.83, .83); TEX.pavingN.repeat.set(.83, .83);
+// Foto-Texturen (ambientCG, CC0) ersetzen die gemalten, sobald sie geladen sind (nur über http, bei file:// bleiben die gemalten)
+function photoTextures() {
+  if (location.protocol === 'file:') return;
+  const load = (file, keys, rep, fix) => {
+    const img = new Image();
+    img.onload = () => { const src = fix ? fix(img) : img; for (const k of keys) { TEX[k].image = src; TEX[k].repeat.set(rep, rep); TEX[k].needsUpdate = true; } };
+    img.src = 'assets/tex/' + file;
+  };
+  load('cobble.jpg', ['cobble'], .9); load('cobble_n.jpg', ['cobbleN'], .9); load('cobble_r.jpg', ['cobbleR'], .9);
+  load('paving.jpg', ['paving'], 1); load('paving_n.jpg', ['pavingN'], 1);
+  load('plaster.jpg', ['plaster'], 1, img => {                    // Gesims-Linie je Geschoss wie bei der gemalten Textur
+    const [c, g] = makeCanvas(512); g.drawImage(img, 0, 0, 512, 512); g.fillStyle = 'rgba(60,55,50,.25)'; g.fillRect(0, 500, 512, 12); return c;
+  });
+}
+photoTextures(); TEX.asphalt.repeat.set(.15, .15); TEX.grass.repeat.set(.25, .25); TEX.roof.repeat.set(.25, .25);
 
 
 // Nacht-Umgebung für Spiegelungen (Pfützen, Fenster): dunkler Himmel, Lichter der Stadt am Horizont
@@ -1964,7 +1979,10 @@ function hqSlot(fem) {
 function hqDress(s, o) {
   const u = s.body.material.userData.u, C = o.col, st = o.style;
   const lin = (f, c) => c.setHex(f).convertSRGBToLinear();
-  lin(C[0], u.uTop.value); lin(C[1], u.uPants.value); lin(C[3], s.hairMat.color);
+  // Oberteil nicht hautfarben (sieht sonst von weitem nackt aus)
+  const near = (a, b) => Math.abs((a >> 16) - (b >> 16)) + Math.abs((a >> 8 & 255) - (b >> 8 & 255)) + Math.abs((a & 255) - (b & 255)) < 150;
+  let top = C[0]; for (let i = 0; near(top, C[2]) && i < 8; i++) top = TOPS[(o.seed * 13 + i * 5 | 0) % TOPS.length];
+  lin(top, u.uTop.value); lin(C[1], u.uPants.value); lin(C[3], s.hairMat.color);
   s.hairMat.color.multiplyScalar(2.2);                           // Haartextur ist grau, Farbe kommt als Tönung
   const sk = new THREE.Color(); lin(C[2], sk); const ref = HQ.skinRef[s.fem ? 'f' : 'm'];
   const rl = .2126 * ref.r + .7152 * ref.g + .0722 * ref.b; u.uSkin.value.copy(sk).multiplyScalar(1 / rl);

@@ -194,7 +194,8 @@ den Ordner `musik` aus. Die Songs bleiben nur auf deinem Rechner und werden nich
 - ~~Phase 7: weitere Substanzen~~ erledigt.
 - ~~Echte Stimmen + Gratis-KI~~ erledigt.
 - ~~Echte 3D-Menschen~~ erledigt.
-- **Als Nächstes:** Foto-Texturen für Boden und Fassaden, echte Schatten.
+- ~~Foto-Texturen für Pflaster, Gehwege, Putz~~ erledigt (ambientCG, CC0, `assets/tex/`).
+- **Als Nächstes:** Kopf-Blick und Trink-Bewegung der echten Menschen, bessere Schatten.
 - **Später:** Google Photorealistic 3D Tiles (Maps-Key) als echte Kulisse, Spotify als Musikquelle (Premium + Developer-App).
 
 ## Technik

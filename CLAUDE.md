@@ -61,7 +61,8 @@ Kleidung über Shader-Uniforms (`uCut` = Saum/Ärmel/Hosenbein/Jacke, Bereiche n
 Körper schlanker über Knochen-Skalierung, Requisiten folgen `hand_r` aufrecht. Nur über http (nicht file://), sonst bleiben die Figuren. Lab: Aufstellung per eigener Testseite.
 
 Offen:
-- Als Nächstes: Foto-Texturen (ambientCG CC0) für Boden/Fassaden, Lampen-Schatten/AO; Kopf-Blick und Trink-Bewegung für `HQ`
+- Foto-Texturen fertig: `photoTextures()` tauscht bei http die Bilder von `TEX.cobble/cobbleN/cobbleR/paving/pavingN/plaster` gegen `assets/tex/*.jpg` (ambientCG CC0)
+- Als Nächstes: Kopf-Blick und Trink-Bewegung für `HQ`, Lampen-Schatten/AO
 - Später: Google 3D Tiles, Spotify, bessere NPC-Modelle, echtes Lallen über Mikro
 
 ## Aufbau

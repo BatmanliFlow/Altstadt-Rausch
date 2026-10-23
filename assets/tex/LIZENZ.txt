@@ -1,0 +1,5 @@
+Foto-Texturen von ambientCG (https://ambientcg.com), Lizenz CC0 1.0:
+- cobble: PavingStones070
+- paving: Bricks066
+- plaster: Plaster001
+Verkleinert und in der Helligkeit an das Spiel angepasst.
