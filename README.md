@@ -151,6 +151,13 @@ und merkt, ob du schreist oder flüsterst. Gespräche können was auslösen: Kal
 - **Musik-System:** Draußen hörst du aus jeder Kneipentür gedämpft die Musik von drinnen, drinnen wird sie laut und klar.
   Besoffen klingt alles dumpf, bekifft langsamer. Ohne eigene Songs laufen live generierte Beats im passenden Stil.
 
+## Musik: Internetradio
+
+Ohne eigene MP3s spielt jede Location automatisch einen passenden **Internetradio-Sender**: Deutschrap auf der Straße und im Bunker,
+80er im Neonlicht, Karneval/Stimmung im Brauhaus, Techno im Keller, Schlager in der Schlagerhölle, Irish Folk im Pub usw.
+Die Senderliste kommt von radio-browser.info, das Spiel nimmt nur Sender, die gerade erreichbar sind. Mit **N** springst du zum nächsten Sender.
+Braucht Internet; ohne Internet laufen die eingebauten Beats. Abschalten: Häkchen „📻 Echte Musik über Internetradio“ im Startbildschirm.
+
 ## Eigene Musik
 
 Lege deine Songs in die Unterordner von `musik/` (siehe `musik/LIESMICH.txt`) und wähle im Startbildschirm

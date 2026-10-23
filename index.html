@@ -127,7 +127,8 @@
       <input type="file" id="folder" webkitdirectory directory multiple hidden>
       <button class="go" id="play" disabled>Altstadt wird gebaut…</button>
     </div>
-    <div id="folderInfo">Ohne Musik-Ordner laufen eingebaute, generierte Beats.</div>
+    <label class="chk"><input type="checkbox" id="useRadio" checked> 📻 Echte Musik über Internetradio (gratis, passend zu jeder Location; braucht Internet)</label>
+    <div id="folderInfo">Eigene MP3s aus dem Musik-Ordner haben Vorrang. Ohne Radio und ohne MP3s laufen eingebaute Beats.</div>
     <div class="keys">
       <b>W A S D</b><span>Laufen (Shift = rennen)</span>
       <b>Maus</b><span>Umschauen</span>
@@ -2552,6 +2553,73 @@ class Groove {
   }
 }
 
+// ---------- Internetradio: echte Musik je Richtung, gratis (Senderliste von radio-browser.info) ----------
+// Nur Sender, die CORS erlauben, damit die Effekte (Tür gedämpft, betrunken dumpf usw.) weiter funktionieren.
+const RADIO_TAGS = { strasse: ['deutschrap', 'german hip hop'], rap: ['deutschrap', 'hip hop'], chill: ['lofi', 'chillhop', 'chillout'], '80s': ['80s'],
+  techno: ['techno', 'minimal techno'], schlager: ['schlager', 'ballermann'], shisha: ['arabic', 'oriental'], brauhaus: ['karneval', 'stimmungsmusik', 'schlager'],
+  lounge: ['lounge', 'nu jazz', 'jazz'], irish: ['irish', 'celtic'], karaoke: ['80s', '90s', 'pop'], imbiss: ['charts', 'pop'], busker: ['acoustic', 'singer-songwriter'],
+  kasematte: ['deep house', 'house'], tower: ['smooth jazz', 'jazz'], rock: ['indie', 'rock', 'alternative'] };
+// Sender, deren Name passt, kommen zuerst
+const RADIO_HINT = { strasse: /deutsch ?rap|german ?(hip|rap)|deutschrap/i, rap: /deutsch ?rap|rap|hip ?hop/i, chill: /lo-?fi|chill/i, '80s': /80/, techno: /techno/i,
+  schlager: /schlager|ballermann|mallorca|party/i, shisha: /arab|orient|turk|türk/i, brauhaus: /karneval|stimmung|kölsch|schlager|fastnacht/i, lounge: /lounge|jazz|bar/i,
+  irish: /irish|celtic|ireland/i, karaoke: /80|90|hits|oldies/i, imbiss: /charts|hits|pop/i, busker: /acoustic|unplugged|singer/i, kasematte: /deep|house|chill/i,
+  tower: /smooth|jazz|lounge/i, rock: /indie|rock|alternative/i };
+const RADIO = { on: true, src: {} };
+async function radioStations(genre) {
+  const key = 'altstadt-radio-' + genre;
+  try { const c = JSON.parse(localStorage.getItem(key)); if (c && Date.now() - c.t < 3 * 864e5 && c.list.length) return c.list; } catch (e) {}
+  const list = [], seen = new Set();
+  for (const tag of RADIO_TAGS[genre] || ['pop']) {
+    for (const host of ['de1.api.radio-browser.info', 'all.api.radio-browser.info']) {
+      try {
+        const r = await fetch(`https://${host}/json/stations/search?tag=${encodeURIComponent(tag)}&hidebroken=true&order=clickcount&reverse=true&limit=20`);
+        if (!r.ok) continue;
+        for (const st of await r.json()) {
+          const u = st.url_resolved || st.url;
+          if (!/^https:/.test(u) || seen.has(u) || !/mp3|aac/i.test(st.codec || 'mp3') || /\.m3u8|\.pls|\.m3u($|\?)/i.test(u)) continue;
+          seen.add(u); list.push({ name: st.name.trim().slice(0, 40), url: u });
+        }
+        break;
+      } catch (e) {}
+    }
+    if (list.length >= 10) break;
+  }
+  const hint = RADIO_HINT[genre]; if (hint) list.sort((a, b) => hint.test(b.name) - hint.test(a.name));
+  try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), list })); } catch (e) {}
+  return list;
+}
+function radioSource(genre) {
+  let r = RADIO.src[genre]; if (r) return r;
+  r = RADIO.src[genre] = { genre, users: new Set(), state: 'loading', name: '', idx: 0, tries: 0, list: null, el: null, node: null };
+  radioStations(genre).then(list => { r.list = list; radioTry(r); }).catch(() => radioFail(r));
+  return r;
+}
+function radioFail(r) { r.state = 'fail'; for (const ch of [...r.users]) ch.radioFailed(); }
+function radioTry(r) {
+  if (!r.list || r.idx >= r.list.length || r.tries >= 6) { radioFail(r); return; }
+  const st = r.list[r.idx]; r.tries++;
+  if (r.el) { r.el.onerror = r.el.onplaying = null; r.el.pause(); r.el.removeAttribute('src'); r.el.load(); try { r.node.disconnect(); } catch (e) {} }
+  const el = new Audio(); el.crossOrigin = 'anonymous'; el.src = st.url;
+  const node = Sound.ctx.createMediaElementSource(el); r.el = el; r.node = node; r.state = 'loading';
+  for (const ch of r.users) node.connect(ch.in);
+  let ok = false; const timer = setTimeout(() => { if (!ok) { r.idx++; radioTry(r); } }, 9000);
+  el.onplaying = () => {
+    if (ok) return; ok = true; clearTimeout(timer); r.state = 'ok'; r.name = st.name; r.tries = 0;
+    for (const ch of r.users) ch.radioReady();
+  };
+  el.onerror = () => { clearTimeout(timer); r.idx++; if (!ok) radioTry(r); else { ok = false; setTimeout(() => radioTry(r), 1500); } };
+  if (r.users.size) el.play().catch(() => {});
+}
+function radioAttach(r, ch) {
+  r.users.add(ch); clearTimeout(r.idle);
+  if (r.node) r.node.connect(ch.in);
+  if (r.el && r.el.paused) r.el.play().catch(() => {});
+  if (r.state === 'ok') setTimeout(() => ch.radioReady(), 0); else if (r.state === 'fail') setTimeout(() => ch.radioFailed(), 0);
+}
+function radioDetach(r, ch) {
+  r.users.delete(ch); try { r.node && r.node.disconnect(ch.in); } catch (e) {}
+  if (!r.users.size) r.idle = setTimeout(() => { if (!r.users.size && r.el) r.el.pause(); }, 8000);
+}
 class Channel {
   constructor(genre, pos, loud = 1) {
     const c = Sound.ctx; this.genre = genre; this.pos = pos; this.loud = loud;
@@ -2567,9 +2635,13 @@ class Channel {
   start() {
     if (this.active) return; this.active = true;
     const list = FILES[this.genre];
-    if (list && list.length) { this.idx = Math.floor(Math.random() * list.length); this.playFile(); }
-    else { this.groove = new Groove(this.genre, this.in).start(); this.title = GEN[this.genre].title; }
+    if (list && list.length) { this.idx = Math.floor(Math.random() * list.length); this.playFile(); return; }
+    // bis das Radio läuft (oder ohne Internet): generierte Beats
+    this.groove = new Groove(this.genre, this.in).start(); this.title = GEN[this.genre].title;
+    if (RADIO.on && RADIO_TAGS[this.genre]) { this.radio = radioSource(this.genre); radioAttach(this.radio, this); }
   }
+  radioReady() { if (!this.active || !this.radio) return; if (this.groove) { this.groove.stop(); this.groove = null; } this.title = '📻 ' + this.radio.name; }
+  radioFailed() { if (!this.active) return; if (this.radio) { radioDetach(this.radio, this); this.radio = null; } if (!this.groove) { this.groove = new Groove(this.genre, this.in).start(); this.title = GEN[this.genre].title; } }
   playFile() {
     const list = FILES[this.genre], f = list[this.idx % list.length]; this.dropEl();
     const el = new Audio(); el.src = f.url; el.preservesPitch = false;
@@ -2577,9 +2649,9 @@ class Channel {
     this.src = Sound.ctx.createMediaElementSource(el); this.src.connect(this.in); el.play().catch(() => {});
     this.el = el; this.title = f.name;
   }
-  next() { if (this.el) { this.idx++; this.playFile(); } else if (this.groove) this.groove.seed = Math.random() * 1000; }
+  next() { if (this.el) { this.idx++; this.playFile(); } else if (this.radio && this.radio.state === 'ok') { this.radio.tries = 0; this.radio.idx++; radioTry(this.radio); } else if (this.groove) this.groove.seed = Math.random() * 1000; }
   dropEl() { if (this.el) { this.el.onended = null; this.el.pause(); this.src.disconnect(); this.el = null; } }
-  stop() { if (!this.active) return; this.active = false; if (this.groove) this.groove.stop(); this.groove = null; this.dropEl(); this.in.gain.cancelScheduledValues(0); this.in.gain.value = 0; }
+  stop() { if (!this.active) return; this.active = false; if (this.groove) this.groove.stop(); this.groove = null; this.dropEl(); if (this.radio) { radioDetach(this.radio, this); this.radio = null; } this.in.gain.cancelScheduledValues(0); this.in.gain.value = 0; }
   gain(v, tc = .3) { this.in.gain.setTargetAtTime(v, Sound.ctx.currentTime, tc); }
   rate(r) { if (this.el) this.el.playbackRate = r; }
 }
@@ -2670,7 +2742,7 @@ const Sound = {
     if (GAME.inside) return '🔊 <b>' + GAME.inside.channel.title + '</b>';
     let s = this.streetOn ? '🎧 <b>' + this.street.title + '</b>' : '🎧 aus';
     const near = this.channels.filter(c => c.active).map(c => [c, Math.hypot(c.pos[0] - P.x, c.pos[1] - P.z)]).sort((a, b) => a[1] - b[1])[0];
-    if (near && near[1] < 14) s += '<br>🔊 aus der Tür: ' + GEN[near[0].genre].title.split('·')[1];
+    if (near && near[1] < 14) s += '<br>🔊 aus der Tür: ' + (near[0].radio && near[0].radio.state === 'ok' ? '📻 ' + near[0].radio.name : GEN[near[0].genre].title.split('·')[1]);
     return s;
   },
   // ---------- Effekte ----------
@@ -3310,7 +3382,7 @@ function endKaraoke(abort) {
 //  Uhrzeit: ab 3 Uhr wird es leerer, ab 5 Uhr dämmert es
 // =====================================================================
 const Q = { crowd: 1 };
-try { const q = JSON.parse(localStorage.getItem('altstadt-q')); if (q) { document.getElementById('qCrowd').value = q[0]; document.getElementById('qGfx').value = q[1]; } } catch (e) {}
+try { const q = JSON.parse(localStorage.getItem('altstadt-q')); if (q) { document.getElementById('qCrowd').value = q[0]; document.getElementById('qGfx').value = q[1]; if (q[2] === false) document.getElementById('useRadio').checked = false; } } catch (e) {}
 const TOD = { thin: 0, dawn: 0, said: {} };
 const DAWN_FOG = new THREE.Color(0x7a6e80), _fog = new THREE.Color();
 function updateTimeOfDay() {
@@ -4052,12 +4124,13 @@ $('folder').addEventListener('change', e => {
   $('folderInfo').textContent = n ? `${n} Songs geladen (${per})` : 'Keine passenden Songs gefunden. Lege MP3s in die Unterordner von musik/ (z. B. musik/strasse/).';
 });
 $('play').addEventListener('click', () => {
+  RADIO.on = $('useRadio').checked;
   if (!Sound.ready) Sound.init(); else Sound.ctx.resume();
   $('start').style.display = 'none'; $('hud').style.display = 'block';
   GAME.started = true; controls.lock();
   if ($('useMic').checked && !MIC.on) startMic();
   Q.crowd = +$('qCrowd').value; renderer.setPixelRatio(Math.min(devicePixelRatio, +$('qGfx').value)); composer.setPixelRatio(Math.min(devicePixelRatio, +$('qGfx').value));
-  try { localStorage.setItem('altstadt-q', JSON.stringify([$('qCrowd').value, $('qGfx').value])); } catch (e) {}
+  try { localStorage.setItem('altstadt-q', JSON.stringify([$('qCrowd').value, $('qGfx').value, $('useRadio').checked])); } catch (e) {}
   setTimeout(() => showMsg('Willkommen in der Altstadt! Die Clubs leuchten auf der Minikarte. <b>Kalle</b> sitzt unten am Rhein, das <b>Büdchen</b> steht am Burgplatz.', 8), 600);
   setTimeout(() => thought('Was für eine Nacht. Erstmal ein Alt.'), 4000);
 });
@@ -4125,7 +4198,7 @@ function frame() {
   composer.render();
 }
 frame();
-window.__game = { FX, consume, inventoryMenu, openTyping, aiTarget, aiTalk, AI, CARS, getTram: () => tram, KASE, SHIPS, startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
+window.__game = { RADIO, FX, consume, inventoryMenu, openTyping, aiTarget, aiTalk, AI, CARS, getTram: () => tram, KASE, SHIPS, startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
 </script>
 </body>
 </html>

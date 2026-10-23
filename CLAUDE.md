@@ -44,6 +44,9 @@ Quellen: Kalle (Pilze), `RONNY` in der Mertensgasse (`ronnyMenu`), Büdchen (Lac
 Kaleidoskop, Kantenleuchten), `AfterimagePass` für Spuren, `TRIP` färbt Menschen und Himmel, Ton: `Sound.shelf` (Bass), `echoWet` (Echo), Wah über `lp`.
 Kombis: `FX.load` → Herzrasen/Paranoia, ab 2,75 Absturz mit Sanitätern; `GAME.down` = Runterkommen (Essen/Wasser helfen). KI-Aktionen pilze/pappe/teil/koks_geben.
 
+Musik: Internetradio je Genre (`RADIO`, `RADIO_TAGS`/`RADIO_HINT`, `radioSource`/`radioTry`): radio-browser.info-API, nur https-Sender mit CORS (sonst automatisch nächster),
+eine Quelle pro Genre für alle Kanäle, Groove läuft, bis das Radio spielt. Reihenfolge: eigene MP3s > Radio > Groove.
+
 Offen:
 - Später: Google 3D Tiles, Spotify, bessere NPC-Modelle, echtes Lallen über Mikro
 
