@@ -24,6 +24,7 @@
   button:hover, .btn:hover { background:#ffffff22; }
   button.go { background:linear-gradient(90deg,var(--pink),#ff7a59); border:0; color:#fff; }
   button:disabled { opacity:.4; cursor:not-allowed; }
+  select { background:#1a1622; color:var(--fg); border:1px solid #ffffff30; border-radius:8px; padding:5px 8px; font-size:14px; }
   label.chk { display:flex; gap:10px; align-items:center; margin:14px 0; color:var(--fg); cursor:pointer; }
   .keys { display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:14px; color:var(--dim); margin-top:18px; }
   .keys b { color:var(--fg); font-family:ui-monospace,monospace; background:#ffffff12; padding:1px 8px; border-radius:6px; text-align:center; }
@@ -101,6 +102,10 @@
     <p>Lauf durch die echte Düsseldorfer Altstadt, geh in Brauhäuser, Clubs, Bars und die Shisha-Lounge,
       trink und rauch so viel du willst und spür, wie es von Glas zu Glas und von Zug zu Zug mehr wird.</p>
     <label class="chk"><input type="checkbox" id="age18"> Ich bin mindestens 18 Jahre alt.</label>
+    <div class="row" style="font-size:14px;color:var(--dim);align-items:center">
+      <span>👥 Leute: <select id="qCrowd"><option value="0.35">wenig (schwacher Rechner)</option><option value="0.65">mittel</option><option value="1" selected>viel (Wochenende!)</option></select></span>
+      <span>🖥️ Grafik: <select id="qGfx"><option value="1">schnell</option><option value="1.5" selected>schön</option></select></span>
+    </div>
     <label class="chk"><input type="checkbox" id="useMic"> 🎤 Mikrofon benutzen: Leute hören dich, reagieren auf Reden und Schreien (Kopfhörer empfohlen)</label>
     <div class="row">
       <label class="btn" for="folder">🎵 Musik-Ordner wählen (optional)</label>
@@ -476,7 +481,15 @@ vec3 facadeLight(vec2 uv, float seed, float t, float core){
   if (r > 0.36) return vec3(0.0);
   vec3 col = mix(vec3(1.0,0.56,0.26), vec3(1.0,0.8,0.55), r2);
   if (r2 > 0.9) col = vec3(0.4,0.55,1.0) * (0.55 + 0.45 * sin(t * 6.0 + seed * 50.0) * sin(t * 2.3 + cell.x));
-  return col * (0.3 + r * 0.9) * (0.7 + 0.3 * f.y);
+  // ab und zu steht jemand am Fenster (Silhouette)
+  float sil = 0.0;
+  if (hh(cell + vec2(7.0, seed)) < 0.28) {
+    float cx = 0.38 + 0.24 * hh(cell + vec2(3.0, seed * 1.7)) + 0.015 * sin(t * 0.4 + seed);
+    float head = 1.0 - smoothstep(0.05, 0.065, length((f - vec2(cx, 0.66)) * vec2(1.0, 1.2)));
+    float body = 1.0 - smoothstep(0.09, 0.12, length((f - vec2(cx, 0.38)) * vec2(1.0, 0.5)));
+    sil = max(head, body);
+  }
+  return col * (0.3 + r * 0.9) * (0.7 + 0.3 * f.y) * (1.0 - 0.88 * sil);
 }`;
 
 function facadeMaterial() {
@@ -741,17 +754,19 @@ function buildGround() {
 }
 
 // ---------- Himmel ----------
+const DAWN = { value: 0 };
 function buildSky() {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     vertexShader: 'varying vec3 vD; void main(){ vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `varying vec3 vD;
+    uniforms: { uDawn: DAWN },
+    fragmentShader: `varying vec3 vD; uniform float uDawn;
       void main(){ vec3 d = normalize(vD); float h = d.y;
-        vec3 zen = vec3(0.004,0.006,0.02), hor = vec3(0.07,0.055,0.08), glow = vec3(0.32,0.16,0.08);
+        vec3 zen = mix(vec3(0.004,0.006,0.02), vec3(0.12,0.2,0.42), uDawn), hor = mix(vec3(0.07,0.055,0.08), vec3(0.85,0.5,0.32), uDawn), glow = mix(vec3(0.32,0.16,0.08), vec3(1.0,0.45,0.2), uDawn);
         vec3 c = mix(hor, zen, smoothstep(0.0, 0.45, h)) + glow * exp(-max(h,0.0) * 12.0) * 0.55;
         vec3 p = floor(d * 380.0);
         float s = fract(sin(dot(p, vec3(12.9898,78.233,37.719))) * 43758.5453);
-        c += step(0.9982, s) * smoothstep(0.08, 0.35, h) * vec3(0.8, 0.85, 1.0) * (0.5 + 0.5 * fract(s * 91.0));
+        c += step(0.9982, s) * smoothstep(0.08, 0.35, h) * vec3(0.8, 0.85, 1.0) * (0.5 + 0.5 * fract(s * 91.0)) * (1.0 - uDawn);
         vec3 md = normalize(vec3(-0.5, 0.45, -0.6)); float m = dot(d, md);
         c += vec3(0.8,0.82,0.9) * smoothstep(0.99985, 0.99992, m) + vec3(0.12,0.15,0.24) * pow(max(m,0.0), 900.0);
         gl_FragColor = vec4(c, 1.0); }`,
@@ -1010,6 +1025,14 @@ const VENUES = [
       wasted: ['Ich bringe Ihnen einen Kaffee. Und dann den Aufzug.', 'Sie haben gerade versucht, Oberkassel zuzuwinken.'] } },
     menu: [D_('Champagner', 'ein Glas, mit Aussicht', { alc: 8 }, 'wine', 0xf0e0a0), D_('Old Fashioned', 'Bourbon, Bitter, Orange', { alc: 11 }, 'cocktail', 0xb06a20),
       D_('Rheinturm-Spritz', 'Hausrezept, blau', { alc: 8 }, 'cocktail', 0x3a8aff), D_('Rotwein', 'schwer und teuer', { alc: 8 }, 'wine', 0x5a0a1a), D_('Espresso', 'zum Runterkommen', { alc: -2 }, 'water', 0x2a140a)] },
+  { id: 'vogel', name: 'Zum Schrägen Vogel', short: 'Rock-Kneipe mit Live-Band', xz: [110, -305], genre: 'rock', sign: 'SCHRÄGER VOGEL', color: 0xff6a2a, theme: 'rock', room: [18, 15, 4],
+    host: { name: 'Toni, Theke', look: [0x1a1a1a, 0x23262e, 0x0a0a0a], lines: {
+      sober: ['Na? Die Band legt gleich richtig los. Was trinkst du?', 'Pils oder was Härteres?'],
+      tipsy: ['Geile Band, oder? Spielen jeden Freitag.', 'Noch eins? Läuft.'],
+      drunk: ['Nicht auf die Bühne kotzen, ja?', 'Du headbangst ja schon an der Theke.'],
+      wasted: ['Junge, du bist durch. Wasser.', 'Du hast gerade dem Schlagzeuger ein Bier ausgegeben. Er wollte keins.'] } },
+    menu: [D_('Pils', 'aus der Flasche', { alc: 7 }, 'beer', 0xd9a531), D_('Whiskey-Cola', 'im Plastikbecher', { alc: 11 }, 'cocktail', 0x3a1a0a),
+      D_('Kurzer Saurer', 'Saurer Apfel, eiskalt', { alc: 7 }, 'shot', 0x7aff5a), D_('Mexikaner', 'scharf! Tomate, Tabasco, Korn', { alc: 8 }, 'shot', 0xc0301a), D_('Wasser', 'aus dem Hahn', { alc: -4 }, 'water', 0xaaccff)] },
 ];
 const BUEDCHEN = { name: 'Büdchen am Burgplatz', pos: [-140, -65], host: { name: 'Ali, Büdchen', lines: {
   sober: ['Na Chef, was brauchst du?', 'Alles da: Bier, Kippen, Chips.'], tipsy: ['Na, schon unterwegs gewesen?'],
@@ -1097,6 +1120,16 @@ function buildFacadeDetails() {
 }
 
 // ---------- Straßenleben: Sitzstufen am Rhein, Fässer, Stehtische, Markisen, Lichterketten ----------
+// Gitarre (in der Hand eines stehenden Musikers, Ursprung = seine Füße)
+function makeGuitar(col = 0x9a5a2a) {
+  const gm = new THREE.MeshStandardMaterial({ color: col, roughness: .5 }), gd = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: .6 });
+  const gtr = new THREE.Group(), body = new THREE.Group(); body.position.set(-.02, 1.02, .2); body.rotation.z = -.95; gtr.add(body);
+  body.add(new THREE.Mesh(new THREE.CylinderGeometry(.19, .19, .09, 18).rotateX(Math.PI / 2), gm).translateY(-.12));
+  body.add(new THREE.Mesh(new THREE.CylinderGeometry(.15, .15, .09, 18).rotateX(Math.PI / 2), gm).translateY(.12));
+  body.add(new THREE.Mesh(new THREE.CylinderGeometry(.045, .045, .095, 12).rotateX(Math.PI / 2), gd).translateY(.04));
+  body.add(new THREE.Mesh(new THREE.BoxGeometry(.05, .55, .03), gd).translateY(.5));
+  return gtr;
+}
 function stripeTexture(a, b) {
   const [c, g] = makeCanvas(64, 64);
   for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? a : b; g.fillRect(i * 8, 0, 8, 64); }
@@ -1198,8 +1231,8 @@ function buildStreetProps() {
   // Lichterketten quer über die Gassen
   const bulbP = [], bulbC = [], wireP = [], c = new THREE.Color();
   const wallHit = (x, z, dx, dz) => { for (let s = .4; s < 10; s += .25) if (insideBuilding(x + dx * s, z + dz * s)) return s; return 0; };
-  for (const w of WALKS) {
-    if (w.type !== 4) continue;
+  for (const w of [...WALKS, ...ROADS.filter(r => r.name === 'Ratinger Straße')]) {
+    if (w.type !== 4 && w.name !== 'Ratinger Straße') continue;
     let acc = 4;
     for (let i = 0; i < w.pts.length - 1; i++) {
       const [ax, az] = w.pts[i], [bx, bz] = w.pts[i + 1], L = Math.hypot(bx - ax, bz - az); if (L < .1) continue;
@@ -1220,6 +1253,48 @@ function buildStreetProps() {
         }
       }
       acc -= L;
+    }
+  }
+  // Kleinkram: Mülleimer an Laternen, Fahrräder an Hauswänden, Bierkästen an Kneipen, leere Flaschen auf dem Boden
+  const binG = mergeGeometries([new THREE.CylinderGeometry(.24, .21, .85, 10).translate(0, .43, 0), new THREE.CylinderGeometry(.26, .26, .06, 10).translate(0, .88, 0)].map(g => { g.deleteAttribute('uv'); return g; }));
+  const bins = lamps.filter(l => Math.hypot(l.x, l.z - 20) < 450 && r() < .45).map(l => [l.x + .5, l.z + .3]);
+  const im = (geo, mat, list, f) => { if (!list.length) return; const m = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((it, i) => m.setMatrixAt(i, f(it))); scene.add(m); return m; };
+  im(binG, new THREE.MeshStandardMaterial({ color: 0x2a4a2a, roughness: .6, metalness: .3 }), bins, ([x, z]) => mat4(x, 0, z));
+  const wheel = new THREE.TorusGeometry(.33, .025, 6, 18);
+  const bikeG = mergeGeometries([wheel.clone().translate(0, .35, -.52), wheel.clone().translate(0, .35, .52),
+    new THREE.CylinderGeometry(.02, .02, 1.05, 5).rotateX(Math.PI / 2).translate(0, .62, 0), new THREE.CylinderGeometry(.02, .02, .6, 5).rotateX(.5).translate(0, .45, -.25),
+    new THREE.CylinderGeometry(.02, .02, .55, 5).rotateX(-.4).translate(0, .5, .35), new THREE.BoxGeometry(.06, .05, .22).translate(0, .82, -.3), new THREE.CylinderGeometry(.015, .015, .5, 5).rotateZ(Math.PI / 2).translate(0, .9, .45)].map(g => { g.deleteAttribute('uv'); return g; }));
+  const bikes = [], crates = [], bottles = [];
+  for (const [type, x, z] of D.pois) {
+    if (Math.hypot(x, z - 20) > 420) continue;
+    const w = nearestWall(x, z, 12); if (!w) continue;
+    const tx = w.nz, tz = -w.nx, ry = Math.atan2(tx, tz);
+    for (let k = 0; k < 3; k++) if (r() < .5) { const a = 5 + k * .7 + r() * .3; bikes.push([w.x + w.nx * .35 + tx * a, w.z + w.nz * .35 + tz * a, ry + (r() - .5) * .2, r() < .5 ? 1 : 0]); }
+    if (type === 1) for (let k = 0; k < 1 + Math.floor(r() * 4); k++) { const a = -4.5 + (k % 2) * .42; crates.push([w.x + w.nx * .3 + tx * a, (k >> 1) * .3, w.z + w.nz * .3 + tz * a, ry]); }
+    for (let k = 0; k < 6; k++) { const a = r() * 6.28, d = 1 + r() * 5; bottles.push([w.x + w.nx * (1 + r() * 3) + Math.cos(a) * d * .5, w.z + w.nz * (1 + r() * 3) + Math.sin(a) * d * .5, r() * 6, r() < .5]); }
+  }
+  const bk = im(bikeG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .5, metalness: .5 }), bikes, ([x, z, ry]) => mat4(x, 0, z, ry + Math.PI / 2));
+  if (bk) { bikes.forEach((b, i) => bk.setColorAt(i, new THREE.Color(pick([0x1a1a1a, 0x8a1a1a, 0x2a4a8a, 0xd8d8d8, 0x2a6a3a], r)))); bk.instanceColor.needsUpdate = true; }
+  const crateTex = (() => { const [c, g] = makeCanvas(64); g.fillStyle = '#c87a1a'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#3a1a08'; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { g.beginPath(); g.arc(8 + i * 16, 8 + j * 16, 5, 0, 7); g.fill(); } return toTex(c); })();
+  im(new THREE.BoxGeometry(.4, .3, .3).translate(0, .15, 0), new THREE.MeshStandardMaterial({ map: crateTex, roughness: .7 }), crates, ([x, y, z, ry]) => mat4(x, y, z, ry));
+  const bottleG = new THREE.CylinderGeometry(.03, .03, .24, 6).rotateZ(Math.PI / 2).translate(0, .03, 0);
+  const bm = im(bottleG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .1, metalness: .2, transparent: true, opacity: .85, envMap: ENV }), bottles, ([x, z, ry, up]) => up ? new THREE.Matrix4().makeRotationZ(-Math.PI / 2).setPosition(x, .12, z) : mat4(x, 0, z, ry));
+  if (bm) { bottles.forEach((b, i) => bm.setColorAt(i, new THREE.Color(pick([0x3a1a06, 0x1a4a1a, 0x5a3a10], r)))); bm.instanceColor.needsUpdate = true; }
+  // Straßenschilder an den Ecken (blau, weiße Schrift)
+  const signCache = {}, signDone = new Set();
+  for (const w of [...WALKS, ...ROADS]) {
+    if (!w.name || signDone.has(w.name) && r() < .6) continue;
+    for (const p of [w.pts[0], w.pts[w.pts.length - 1]]) {
+      if (Math.hypot(p[0], p[1] - 20) > 380) continue;
+      const wall = nearestWall(p[0], p[1], 9); if (!wall) continue;
+      if (!signCache[w.name]) {
+        const [c, g] = makeCanvas(512, 112); g.fillStyle = '#1a3f8f'; g.fillRect(0, 0, 512, 112); g.strokeStyle = '#fff'; g.lineWidth = 6; g.strokeRect(8, 8, 496, 96);
+        g.fillStyle = '#fff'; g.font = '700 52px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(w.name, 256, 58, 470);
+        signCache[w.name] = new THREE.MeshStandardMaterial({ map: toTex(c), roughness: .5, emissive: 0x0a1a3a });
+      }
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(1.15, .25), signCache[w.name]);
+      placeOnWall(m, { x: wall.x + wall.nx * .04, z: wall.z + wall.nz * .04, nx: wall.nx, nz: wall.nz }, 3.0);
+      signDone.add(w.name); break;
     }
   }
   if (bulbP.length) {
@@ -1257,8 +1332,8 @@ function buildInterior(v, idx) {
   const box = (w, h, d, mat, x, y, z, isSolid = false) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); g.add(m); if (isSolid) solid.push([x - w / 2, z - d / 2, x + w / 2, z + d / 2]); return m; };
   const plane = (w, h, mat, x, y, z, rx, ry) => { const pg = new THREE.PlaneGeometry(w, h), uv = pg.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 2.5, uv.getY(i) * h / 2.5); const m = new THREE.Mesh(pg, mat); m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, 0); g.add(m); return m; };
   const th = v.theme;
-  const floorM = { brauhaus: IMAT.woodDark, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.concrete, schlager: IMAT.tiles, chill: IMAT.carpet, shisha: IMAT.woodDark, cocktail: IMAT.woodDark, irish: IMAT.woodDark, karaoke: IMAT.carpet, imbiss: IMAT.tiles, tower: IMAT.carpet, kasematte: IMAT.woodLight }[th];
-  const wallM = { brauhaus: IMAT.plaster, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.brick, schlager: IMAT.plaster, chill: IMAT.velvet, shisha: IMAT.black, cocktail: IMAT.woodDark, irish: IMAT.green, karaoke: IMAT.black, imbiss: IMAT.whiteTiles, tower: IMAT.black, kasematte: IMAT.brick }[th];
+  const floorM = { brauhaus: IMAT.woodDark, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.concrete, schlager: IMAT.tiles, chill: IMAT.carpet, shisha: IMAT.woodDark, cocktail: IMAT.woodDark, irish: IMAT.woodDark, karaoke: IMAT.carpet, imbiss: IMAT.tiles, tower: IMAT.carpet, kasematte: IMAT.woodLight, rock: IMAT.concrete }[th];
+  const wallM = { brauhaus: IMAT.plaster, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.brick, schlager: IMAT.plaster, chill: IMAT.velvet, shisha: IMAT.black, cocktail: IMAT.woodDark, irish: IMAT.green, karaoke: IMAT.black, imbiss: IMAT.whiteTiles, tower: IMAT.black, kasematte: IMAT.brick, rock: IMAT.brick }[th];
   if (v.round) {
     // runder Raum mit Glas rundherum (Rheinturm)
     const fl = new THREE.Mesh(new THREE.CircleGeometry(v.round + .3, 48).rotateX(-Math.PI / 2), floorM); g.add(fl);
@@ -1412,6 +1487,23 @@ function buildInterior(v, idx) {
     for (let i = 0; i < 10; i++) spots.push({ mode: 'idle', x: lerp(-1.5, 3, rnd()), z: lerp(-3.5, 5.5, rnd()), ry: -Math.PI / 2 + (rnd() - .5) * .6, watch: true });
     L(sx, H - .3, 1, 0xffffff, 26, 'static'); grid(3, 1, -2, 6, 1, 1, (x, z, i) => L(x, H - .3, z, [0xff5ae0, 0x38e8ff, 0xffe04a][i], 18, 'chase', { s: i }));
     drawKaraokeScreen(it_extra.screen, null);
+  } else if (th === 'rock') {
+    // Bühne hinten links mit Band (Gitarre, Bass, Schlagzeug), Poster an den Wänden
+    const sx = -W / 2 + 3.2, sz = 3.5;
+    box(5.6, .45, 4.2, IMAT.black, sx, .22, sz, true);
+    for (const x of [sx - 2.2, sx + 2.2]) box(.7, 1.1, .5, IMAT.black, x, 1, sz + 1.6);
+    const drum = new THREE.Group(); drum.position.set(sx, .45, sz + 1.2); g.add(drum);
+    drum.add(new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, .35, 14).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x8a1a1a, roughness: .4 })).translateY(.35).translateZ(-.4));
+    for (const [x, y] of [[-.45, .65], [.45, .65], [.2, .55]]) drum.add(new THREE.Mesh(new THREE.CylinderGeometry(.18, .18, .15, 12), IMAT.metal).translateX(x).translateY(y).translateZ(-.7));
+    for (const x of [-.7, .7]) drum.add(new THREE.Mesh(new THREE.CylinderGeometry(.22, .22, .01, 12), new THREE.MeshStandardMaterial({ color: 0xc8a040, metalness: .9, roughness: .2 })).translateX(x).translateY(1.05).translateZ(-.5));
+    spots.push({ mode: 'sit', x: sx, z: sz + 2.05, ry: Math.PI, y: .9, band: 'drum' });
+    spots.push({ mode: 'idle', x: sx - 1.4, z: sz + .4, ry: Math.PI + .3, band: 'guitar' });
+    spots.push({ mode: 'idle', x: sx + 1.4, z: sz + .4, ry: Math.PI - .3, band: 'guitar' });
+    for (const [x, ry, c] of [[sx - 1.4, Math.PI + .3, 0xc02020], [sx + 1.4, Math.PI - .3, 0x1a1a1a]]) { const gt = makeGuitar(c); gt.position.set(x, .45, sz + .4); gt.rotation.y = ry; g.add(gt); }
+    for (let i = 0; i < 12; i++) { const c = pick([0xff3d9a, 0x38e8ff, 0xffe04a, 0xff6a2a, 0xe8e8e8]); const pw = .6 + rnd() * .3; box(pw, pw * 1.4, .02, new THREE.MeshStandardMaterial({ color: c, roughness: .8 }), -W / 2 + 1 + rnd() * (W - 2), 1.6 + rnd() * 1.2, Dp / 2 - .03); }
+    dancefloor(sx - 2.5, sx + 3, sz - 4.5, sz - 2, 16);
+    for (let i = 0; i < 10; i++) spots.push({ mode: 'idle', x: lerp(-1, 6, rnd()), z: lerp(-1, 5, rnd()), ry: rnd() * 6 });
+    L(sx, H - .3, sz, 0xff8a4a, 26, 'pulse'); L(sx, H - .3, sz - 3, 0xff3d9a, 18, 'chase', { s: 1 }); grid(2, 1, 1, 6, 0, 0, (x, z) => L(x, H - .4, z, 0xffb070, 8, 'flicker'));
   } else if (th === 'tower') {
     // Rheinturm: Aufzugskern in der Mitte, Tische am Fenster mit Blick über Düsseldorf
     const core = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, H, 24), IMAT.concrete); core.position.set(0, H / 2, 2); g.add(core); solid.push([-2.4, -.4, 2.4, 4.4]);
@@ -1751,6 +1843,7 @@ function animate(o, t) {
     else if (act === 'lean') { J[12] = -.07; J[0] = .06; J[2] = -.12; J[3] = .28; J[4] = J[6] = .1; J[5] = J[7] = -.3; J[8] = J[9] = .15; }
     else if (act === 'counter') { J[4] = J[6] = -.75; J[5] = J[7] = -.75; J[8] = J[9] = .12; J[12] = .1; }
     else if (act === 'sing') { const k = Math.sin(t * 2.2); J[6] = -.5; J[7] = -2.35; J[9] = -.25; J[4] = -1.1 - k * .3; J[5] = -.3; J[8] = .5 + k * .2; J[12] = -.05 + k * .03; J[11] = -.15; }
+    else if (act === 'drum') { const k = Math.sin(t * 16 + s0), k2 = Math.sin(t * 16 + s0 + 3.14); J[4] = -.75 + k * .25; J[6] = -.75 + k2 * .25; J[5] = J[7] = -1.0; J[8] = J[9] = .2; J[11] = .12 + Math.abs(k) * .1; }
     else if (act === 'guitar') { J[4] = -.95; J[5] = -1.1; J[8] = -.25; J[6] = -.25; J[7] = -1.15 + Math.sin(t * 10.5) * .2; J[9] = -.3; J[11] = .25 + Math.sin(t * 1.6) * .05; }
     else if (act === 'wave') { J[6] = -2.6; J[7] = -.4 + Math.sin(t * 9) * .4; J[9] = .3; }
   }
@@ -1892,14 +1985,8 @@ function initCrowd() {
     const bx = w.x + w.nx * 1.2, bz = w.z + w.nz * 1.2, ry = Math.atan2(w.nx, w.nz);
     const o = street.add({ mode: 'idle', act: 'guitar', x: bx, z: bz, ry, fixed: true, fem: false, busker: true });
     o.col = [0x6a4a2a, 0x2a3a5a, o.col[2], 0x3a2414]; o.hair = 2; o.beard = 1; o.style[1] = .8; o.style[2] = 0; o.face = ry;
-    const gm = new THREE.MeshStandardMaterial({ color: 0x9a5a2a, roughness: .5 }), gd = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: .6 });
-    const gtr = new THREE.Group(); gtr.position.set(bx, 0, bz); gtr.rotation.y = ry;
-    const body = new THREE.Group(); body.position.set(-.02, 1.02, .2); body.rotation.z = -.95; gtr.add(body);
-    body.add(new THREE.Mesh(new THREE.CylinderGeometry(.19, .19, .09, 18).rotateX(Math.PI / 2), gm).translateY(-.12));
-    body.add(new THREE.Mesh(new THREE.CylinderGeometry(.15, .15, .09, 18).rotateX(Math.PI / 2), gm).translateY(.12));
-    body.add(new THREE.Mesh(new THREE.CylinderGeometry(.045, .045, .095, 12).rotateX(Math.PI / 2), gd).translateY(.04));
-    body.add(new THREE.Mesh(new THREE.BoxGeometry(.05, .55, .03), gd).translateY(.5));
-    const case_ = new THREE.Mesh(new THREE.BoxGeometry(1.0, .1, .38), gd); case_.position.set(bx + w.nx * 1.1, .05, bz + w.nz * 1.1); case_.rotation.y = ry + Math.PI / 2; scene.add(gtr, case_);
+    const gtr = makeGuitar(); gtr.position.set(bx, 0, bz); gtr.rotation.y = ry;
+    const case_ = new THREE.Mesh(new THREE.BoxGeometry(1.0, .1, .38), new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: .6 })); case_.position.set(bx + w.nx * 1.1, .05, bz + w.nz * 1.1); case_.rotation.y = ry + Math.PI / 2; scene.add(gtr, case_);
     BUSKER = [bx, bz];
     for (let k = 0; k < 7; k++) { const a = -1 + k * .33, d = 2.6 + r() * .8, x = bx + Math.sin(ry + a) * d, z = bz + Math.cos(ry + a) * d;
       if (free(x, z)) { const f = street.add({ mode: 'idle', x, z, ry: Math.atan2(bx - x, bz - z), fixed: true }); f.act = pick(['listen', 'film', 'pockets', 'cheer'], r); f.face = f.ry; f.prop = f.act === 'film' ? PROP.phone : r() < .4 ? PROP.bottle : 0; } }
@@ -1944,7 +2031,7 @@ const _pl = [0, 0];
 function updateStreetCrowd(dt, t, px, pz) {
   if (GAME.inside) { street.flush(); return; }
   _pl[0] = px; _pl[1] = pz;
-  let nearCnt = 0;
+  let nearCnt = 0; const keep = Q.crowd * (1 - .7 * TOD.thin);
   for (const o of street.list) {
     if (o.fixed || o.approach) { if (o.mode === 'walk' && o.fixed) o.phase += dt * 4.3; }
     else if (o.mode === 'walk' && !o.lead) {
@@ -1969,6 +2056,10 @@ function updateStreetCrowd(dt, t, px, pz) {
       if (insideBuilding(o.x, o.z)) { o.x = L.x + s * (o.fo[1] - .7); o.z = L.z + c * (o.fo[1] - .7); }
     }
     o.gy = onBridge(o.x, o.z) ? .35 : 0;
+    // spät in der Nacht (oder auf schwachen Rechnern) werden es weniger Leute
+    o.vanish = !o.always && !o.police && !o.busker && !o.rose && !o.bouncer && !o.jga && ((o.seed * 7.13) % 1) > keep;
+    if (o.vanish) continue;
+    if (TOD.thin > .3 && !o.drunk && ((o.seed * 3.3) % 1) < .35 && o.mode === 'walk') o.drunk = true;
     // in der Nähe: zum Spieler gucken
     const pd = Math.hypot(o.x - px, o.z - pz);
     if (o.rose) roseSeller(o, pd, dt, px, pz);
@@ -2217,7 +2308,7 @@ hand.position.copy(HAND_REST);
 const mf = m => 440 * Math.pow(2, (m - 69) / 12);
 const FOLDER_GENRE = { 'strasse': 'strasse', 'deutschrap-club': 'rap', 'chill-lounge': 'chill', '80er-kneipe': '80s', 'techno-keller': 'techno',
   'schlager-bar': 'schlager', 'shisha-lounge': 'shisha', 'brauhaus': 'brauhaus', 'cocktailbar': 'lounge',
-  'irish-pub': 'irish', 'karaoke-bar': 'karaoke', 'imbiss': 'imbiss', 'strassenmusik': 'busker', 'kasematte': 'kasematte', 'rheinturm': 'tower' };
+  'irish-pub': 'irish', 'karaoke-bar': 'karaoke', 'imbiss': 'imbiss', 'strassenmusik': 'busker', 'kasematte': 'kasematte', 'rheinturm': 'tower', 'rock-kneipe': 'rock' };
 const FILES = {};
 
 class Synth {
@@ -2286,6 +2377,8 @@ const GEN = {
     chords: [[38, [62, 69, 74]]], scale: [62, 63, 66, 67, 69, 70, 72, 74] },
   irish: { title: "O'Rheily's · Irish Folk", bpm: 116, swing: .56,
     chords: [[38, [62, 66, 69]], [43, [62, 67, 71]], [45, [61, 64, 69]], [47, [62, 66, 71]]], scale: [74, 76, 78, 79, 81, 83, 85, 86] },
+  rock: { title: 'Zum Schrägen Vogel · Indie & Rock live', bpm: 132, swing: .5,
+    chords: [[40, [52, 59, 64]], [45, [57, 64, 69]], [38, [50, 57, 62]], [47, [59, 66, 71]]], scale: [76, 78, 79, 81, 83, 86, 88] },
   busker: { title: 'Straßenmusiker · Akustik-Gitarre', bpm: 96, swing: .58,
     chords: [[43, [55, 59, 62, 67, 71]], [38, [54, 57, 62, 66, 69]], [40, [52, 55, 59, 64, 67]], [36, [52, 55, 60, 64, 67]]], scale: [67, 69, 71, 74, 76, 79] },
   brauhaus: { title: 'Brauhaus · Kneipen-Stimmung', bpm: 112, swing: .5,
@@ -2371,6 +2464,14 @@ const PATTERN = {
     if (st === 0 || st === 8) S.bass(o, t, mf(r), sd * 3, .2, 500);
     if (st % 4 === 2) S.chord(o, t, n, sd * 1.3, 'accordion', .02);
     if (st % 2 === 0) { const f = mf(pickH(g.scale, G.h(bar % 4, st + 11))); S.tone(o, t, f, sd * 1.7, { type: 'sawtooth', v: .022, a: .02, r: .08, lp: 2600 }); }
+  },
+  rock(G, st, bar, t, sd, S) {
+    const o = G.o, [r, n] = G.chord(bar), g = G.g;
+    if (st === 0 || st === 8 || (st === 10 && G.h(bar % 2, 10) < .6)) S.kick(o, t, .9, 120, 48, .3);
+    if (st === 4 || st === 12) S.snare(o, t, .5, .22);
+    if (st % 2 === 0) S.hat(o, t, st % 4 ? .05 : .09, .05);
+    if (st % 2 === 0) { for (const m of n) S.tone(o, t, mf(m), sd * (st % 8 === 0 ? 1.8 : .8), { type: 'sawtooth', v: .022, a: .004, r: .05, lp: 1300 + 500 * (st % 8 === 0) }); S.bass(o, t, mf(r - 12), sd * .9, .18, 500); }
+    if (bar % 4 === 3 && st % 2 === 0 && G.h(bar, st) < .7) S.tone(o, t, mf(pickH(g.scale, G.h(bar, st + 4))), sd * 1.5, { type: 'square', v: .025, a: .01, r: .1, lp: 2400 });
   },
   busker(G, st, bar, t, sd, S) {
     const o = G.o, [r, n] = G.chord(bar), g = G.g;
@@ -2658,7 +2759,7 @@ function collide(ox, oz, x, z) {
   }
   // Leute in der Menge: man rempelt sie an statt durchzulaufen
   for (const o of street.list) {
-    const dx = x - o.x, dz = z - o.z; if (dx > 1 || dx < -1 || dz > 1 || dz < -1) continue;
+    const dx = x - o.x, dz = z - o.z; if (dx > 1 || dx < -1 || dz > 1 || dz < -1 || o.vanish) continue;
     const d = Math.hypot(dx, dz), rr = .26 + .2 * o.scale;
     if (d < rr && d > 1e-4) { x = o.x + dx / d * rr; z = o.z + dz / d * rr; bumpInto(o); }
   }
@@ -2876,7 +2977,7 @@ function leaveVenue(instant = false) {
   };
   Sound.door(); if (instant) go(); else fadeThen(go);
 }
-const HAZE = { tower: [0x1a1524, .0011], kasematte: [0x140c08, .02], irish: [0x10120a, .02], karaoke: [0x140814, .022], imbiss: [0x101010, .006], brauhaus: [0x1a120a, .016], rap: [0x220606, .04], eighties: [0x160516, .022], techno: [0x05081a, .045], schlager: [0x181008, .012], chill: [0x120a18, .025], shisha: [0x0c1a22, .03], cocktail: [0x05101a, .018] };
+const HAZE = { rock: [0x120a08, .035], tower: [0x1a1524, .0011], kasematte: [0x140c08, .02], irish: [0x10120a, .02], karaoke: [0x140814, .022], imbiss: [0x101010, .006], brauhaus: [0x1a120a, .016], rap: [0x220606, .04], eighties: [0x160516, .022], techno: [0x05081a, .045], schlager: [0x181008, .012], chill: [0x120a18, .025], shisha: [0x0c1a22, .03], cocktail: [0x05101a, .018] };
 function setupIndoorCrowd(v) {
   const it = v.interior; indoor.list.length = 0;
   const spots = [...it.spots].sort(() => Math.random() - .5).sort((a, b) => (b.host ? 1 : 0) - (a.host ? 1 : 0) || (b.koebes ? 1 : 0) - (a.koebes ? 1 : 0));
@@ -2890,6 +2991,7 @@ function setupIndoorCrowd(v) {
       o.prop = k < .55 ? drinkProp : k < .65 && v.theme !== 'shisha' ? PROP.cig : k < .75 ? PROP.phone : 0;
       if (v.club && o.mode === 'dance' && Math.random() < .12) o.act = 'film';
     }
+    if (s.band) { o.act = s.band; o.face = o.ry; o.prop = 0; o.band = true; if (s.band === 'guitar') { o.hair = 2; o.gy += .45; } }
     if (s.watch) { o.act = pick(['listen', 'cheer', 'film', 'pockets', 'listen']); o.face = -Math.PI / 2; }
     if (s.mode === 'roam') { o.tx = o.x; o.tz = o.z; o.speed = 1.2; }
     if (o.mode === 'sit') o.lounge = v.theme === 'chill' || v.theme === 'shisha' ? Math.random() < .6 : false;
@@ -2965,7 +3067,7 @@ function updateBubbles(dt) {
   for (const o of crowd) {
     if (o === ME || o.host) continue;
     const dx = o.x - CAMPOS.x, dz = o.z - CAMPOS.z, d = Math.hypot(dx, dz);
-    if (d > 3 && d < 17 && (dx * CAMDIR.x + dz * CAMDIR.z) > d * .6 && BUBBLES.every(b => b.o !== o)) cand.push(o);
+    if (d > 3 && d < 17 && !o.vanish && (dx * CAMDIR.x + dz * CAMDIR.z) > d * .6 && BUBBLES.every(b => b.o !== o)) cand.push(o);
   }
   if (!cand.length) return;
   const o = pick(cand), pd = Math.hypot(o.x - P.x, o.z - P.z);
@@ -2987,7 +3089,7 @@ function nearestPerson(maxD = 1.9) {
   const fx = Math.sin(P.face), fz = Math.cos(P.face);
   for (const o of street.list) {
     const dx = o.x - P.x, dz = o.z - P.z, d = Math.hypot(dx, dz);
-    if (d < bd && (dx * fx + dz * fz) > d * .2 && !o.kalle) { bd = d; best = o; }
+    if (d < bd && (dx * fx + dz * fz) > d * .2 && !o.kalle && !o.vanish) { bd = d; best = o; }
   }
   return best;
 }
@@ -3066,6 +3168,27 @@ function endKaraoke(abort) {
   if (score >= 85) { say(host.name, 'Wahnsinn! Der nächste Mut-Shot geht aufs Haus!', 5); setTimeout(() => drink({ alc: 9, kind: 'shot', col: 0x3a1a08 }), 1500); }
   else if (score >= 55) say(host.name, 'Na also! Das war doch richtig gut!', 5);
   else say(host.name, 'Mutig. Sehr... mutig. Applaus trotzdem!', 5);
+}
+
+// =====================================================================
+//  Uhrzeit: ab 3 Uhr wird es leerer, ab 5 Uhr dämmert es
+// =====================================================================
+const Q = { crowd: 1 };
+try { const q = JSON.parse(localStorage.getItem('altstadt-q')); if (q) { document.getElementById('qCrowd').value = q[0]; document.getElementById('qGfx').value = q[1]; } } catch (e) {}
+const TOD = { thin: 0, dawn: 0, said: {} };
+const DAWN_FOG = new THREE.Color(0x7a6e80), _fog = new THREE.Color();
+function updateTimeOfDay() {
+  const m = GAME.clock % 1440, morning = m < 720;
+  TOD.thin = morning ? smoothstep(150, 330, m) : 0;
+  TOD.dawn = morning ? smoothstep(300, 410, m) : 0;
+  DAWN.value = TOD.dawn;
+  if (!GAME.inside || GAME.inside.view) {
+    _fog.copy(OUT_FOG).lerp(DAWN_FOG, TOD.dawn); scene.fog.color.copy(_fog); scene.background.copy(_fog);
+    hemi.intensity = .55 + TOD.dawn * .7; moon.intensity = .45 + TOD.dawn * .5; moon.color.setRGB(.56 + TOD.dawn * .44, .64 + TOD.dawn * .2, .78 - TOD.dawn * .2);
+  }
+  const once = (k, f) => { if (!TOD.said[k]) { TOD.said[k] = true; f(); } };
+  if (morning && m >= 180 && m < 200) once('3', () => { showMsg('🕒 3 Uhr. Die ersten torkeln nach Hause, die Pommesbude hat Hochbetrieb.', 6); thought(pick(['Schon drei? Egal. Einer noch.', 'Jetzt Pommes. Unbedingt.'])); });
+  if (morning && m >= 330 && m < 350) once('5', () => { showMsg('🌅 Es wird hell über dem Rhein. Die Vögel zwitschern, die Altstadt schläft gleich ein.', 7); thought(pick(['Wo ist die Nacht hin?', 'Die Sonne. Die Sonne ist mein Feind.', 'Frühstück? Oder Alt?'])); });
 }
 
 // =====================================================================
@@ -3592,6 +3715,8 @@ $('play').addEventListener('click', () => {
   $('start').style.display = 'none'; $('hud').style.display = 'block';
   GAME.started = true; controls.lock();
   if ($('useMic').checked && !MIC.on) startMic();
+  Q.crowd = +$('qCrowd').value; renderer.setPixelRatio(Math.min(devicePixelRatio, +$('qGfx').value)); composer.setPixelRatio(Math.min(devicePixelRatio, +$('qGfx').value));
+  try { localStorage.setItem('altstadt-q', JSON.stringify([$('qCrowd').value, $('qGfx').value])); } catch (e) {}
   setTimeout(() => showMsg('Willkommen in der Altstadt! Die Clubs leuchten auf der Minikarte. <b>Kalle</b> sitzt unten am Rhein, das <b>Büdchen</b> steht am Burgplatz.', 8), 600);
   setTimeout(() => thought('Was für eine Nacht. Erstmal ein Alt.'), 4000);
 });
@@ -3640,6 +3765,7 @@ function frame() {
     else if (GAME.inside) { const [c, d] = HAZE[GAME.inside.theme]; scene.fog.color.set(c); scene.background.set(0); hemi.intensity = .12; moon.intensity = 0; water.visible = false; sky.visible = false; GAME.baseHaze = d; }
     else { scene.fog.color.copy(OUT_FOG); scene.fog.density = OUT_FOG_D; scene.background.copy(OUT_FOG); hemi.intensity = .55; moon.intensity = .45; water.visible = true; sky.visible = true; }
   }
+  updateTimeOfDay();
   if (GAME.inside) scene.fog.density = GAME.baseHaze + GAME.haze;
   sky.position.copy(head.position);
   water.material.uniforms.time.value += dt * .35;
