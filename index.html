@@ -943,7 +943,7 @@ const VENUES = [
     menu: [D_('Mojito', 'Rum, Minze, Limette', { alc: 10 }, 'cocktail', 0xc8ffb0), D_('Long Island Iced Tea', 'fünf Sorten Alkohol. Fünf.', { alc: 22 }, 'cocktail', 0x8a4a1a),
       D_('Espresso Martini', 'wach und betrunken', { alc: 10 }, 'cocktail', 0x2a140a), D_('Negroni', 'bitter, stark, Stil', { alc: 12 }, 'cocktail', 0xc0201a),
       D_('Passionfruit Martini', 'mit Prosecco-Shot', { alc: 12 }, 'cocktail', 0xffc040), D_('Whiskey pur', 'Single Malt', { alc: 9 }, 'shot', 0xb06a20)] },
-  { id: 'irish', name: "O'Rheily's Irish Pub", short: 'Irish Pub', xz: [3.3, 43.1], genre: 'irish', sign: "O'RHEILY'S", color: 0x2aff6a, theme: 'irish', room: [18, 14, 3.6],
+  { id: 'irish', name: "O'Rheily's Irish Pub", short: 'Irish Pub', xz: [3.3, 43.1], genre: 'irish', sign: "O'RHEILY'S", color: 0x3ad07a, theme: 'irish', room: [18, 14, 3.6],
     host: { name: 'Siobhan, Bar', look: [0x0a3a1a, 0x111111, 0xb0401a], lines: {
       sober: ['Céad míle fáilte! Was darf\'s sein?', 'Ein Stout? Braucht seine Zeit, Liebling.'],
       tipsy: ['Na, jetzt wird\'s gemütlich.', 'Noch ein Pint?'],
@@ -1177,7 +1177,7 @@ const IMAT = {
   carpet: new THREE.MeshStandardMaterial({ color: 0x2a1a3a, roughness: 1 }),
   glass: new THREE.MeshStandardMaterial({ color: 0x88aacc, roughness: .05, metalness: .1, transparent: true, opacity: .35 }),
   green: new THREE.MeshStandardMaterial({ map: TEX.plaster, color: 0x1f4a2c, roughness: .8 }),
-  whiteTiles: new THREE.MeshStandardMaterial({ map: tileTexture('#e8e8e4', '#f4f4f0'), roughness: .25 }),
+  whiteTiles: new THREE.MeshStandardMaterial({ map: tileTexture('#e8e8e4', '#f4f4f0'), color: 0x9a9a96, roughness: .35 }),
 };
 const interiors = [];
 function buildInterior(v, idx) {
@@ -1216,7 +1216,8 @@ function buildInterior(v, idx) {
   acts.push({ x: 0, z: Dp / 2 - 1, r: 1.8, label: 'Rausgehen', act: () => leaveVenue() });
   // Lichter
   const L = (x, y, z, color, k, mode = 'static', extra = {}) => lights.push(Object.assign({ x: x + ox, y, z, color: new THREE.Color(color), k, mode }, extra));
-  L(0, H - .3, barZ + .5, v.color, th === 'brauhaus' ? 8 : 22, 'static'); L(-barW / 2, H - .4, barZ, 0xffd0a0, th === 'brauhaus' ? 6 : 12); L(barW / 2, H - .4, barZ, 0xffd0a0, th === 'brauhaus' ? 6 : 12);
+  const dim = th === 'brauhaus' ? .35 : th === 'imbiss' ? .12 : 1;
+  L(0, H - .3, barZ + .5, v.color, 22 * dim, 'static'); L(-barW / 2, H - .4, barZ, 0xffd0a0, 12 * dim); L(barW / 2, H - .4, barZ, 0xffd0a0, 12 * dim);
   const grid = (nx, nz, x0, x1, z0, z1, f) => { for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) f(lerp(x0, x1, nx === 1 ? .5 : i / (nx - 1)), lerp(z0, z1, nz === 1 ? .5 : j / (nz - 1)), i, j); };
   const sofa = (x, z, ry, len = 2.2, mat = IMAT.velvet) => {
     const s = new THREE.Group(); s.position.set(x, 0, z); s.rotation.y = ry;
@@ -1309,7 +1310,7 @@ function buildInterior(v, idx) {
     }
     const dart = new THREE.Mesh(new THREE.CircleGeometry(.23, 24), new THREE.MeshStandardMaterial({ map: (() => { const [c, q] = makeCanvas(128); for (let r = 6; r > 0; r--) { q.fillStyle = r % 2 ? '#1a1a1a' : '#d8c8a0'; q.beginPath(); q.arc(64, 64, r * 10, 0, 7); q.fill(); } q.fillStyle = '#c02020'; q.beginPath(); q.arc(64, 64, 6, 0, 7); q.fill(); return toTex(c); })() }));
     dart.position.set(W / 2 - .03, 1.75, -Dp / 2 + 3); dart.rotation.y = -Math.PI / 2; g.add(dart);
-    grid(3, 2, -5, 5, -1, 4, (x, z) => L(x, H - .5, z, 0x9aff7a, 6, 'flicker'));
+    grid(3, 2, -5, 5, -1, 4, (x, z) => L(x, H - .5, z, 0xffb070, 7, 'flicker'));
     grid(2, 1, -3, 3, 1, 1, (x, z) => L(x, H - .4, z, 0xffa860, 9, 'static'));
     for (let i = 0; i < 6; i++) spots.push({ mode: 'idle', x: lerp(-barW / 2, barW / 2, rnd()), z: barZ + 1.3 + rnd(), ry: Math.PI + (rnd() - .5) });
   } else if (th === 'karaoke') {
@@ -1343,7 +1344,7 @@ function buildInterior(v, idx) {
       for (const s of [-1, 1]) spots.push({ mode: 'idle', x: x + s * .6, z: 1.5, ry: s < 0 ? Math.PI / 2 : -Math.PI / 2 });
     }
     for (let i = 0; i < 4; i++) spots.push({ mode: 'idle', x: -1.5 + i * 1, z: barZ + 1.5 + (i % 2) * .4, ry: Math.PI });
-    grid(2, 2, -3, 3, -2, 2.5, (x, z) => L(x, H - .2, z, 0xf0f4ff, 14, 'static'));
+    grid(2, 2, -3, 3, -2, 2.5, (x, z) => L(x, H - .2, z, 0xf0f4ff, 2.2, 'static'));
   }
   scene.add(g);
   const it = { v, g, ox, W, Dp, H, solid, lights, spots, acts, anim, spawn: [ox, Dp / 2 - 3.2], ...it_extra };
