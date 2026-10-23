@@ -509,7 +509,7 @@ function facadeMaterial() {
 const PALETTE = ['#efe6d2', '#e9d8b4', '#f1ece4', '#d8c3a5', '#e7c9b0', '#c9b79c', '#e8dfc9', '#b5a48d', '#d9a88e', '#c4c0b6', '#9c5a48', '#efd9a7'].map(c => new THREE.Color(c));
 const segGrid = new Grid(6);           // Wandsegmente für Kollision
 const bldGrid = new Grid(20);          // Gebäude-Polygone für Punkt-in-Haus
-const buildings = [];
+const buildings = [], KASE = [];   // KASE: Fronten der Kasematten am Rhein
 
 function prepBuildings() {
   for (const b of D.buildings) {
@@ -517,6 +517,31 @@ function prepBuildings() {
     if (pts.length < 3) continue;
     if (polyArea(pts) < 0) pts.reverse();
     buildings.push({ pts, h: b[0], gable: b[1] === 1 || (pts.length === 4 && b[0] < 20 && rnd() < .75) });
+  }
+  // Rheinturm: Tür unten am Fuß, Restaurant oben auf 168 m
+  {
+    const [rx, rz] = geo2xz(51.2179, 6.7616), v = VENUES.find(v => v.id === 'rheinturm');
+    v.ox = rx; v.oz = rz; v.xz = [rx + 9.3, rz]; v.doorFix = { x: rx + 9.3, z: rz, nx: 1, nz: 0 };
+  }
+  // Kasematten: flache Bar-Reihe an der Rheinuferpromenade, Fronten mit Terrassen zum Wasser
+  {
+    const bank = flatToPts(D.river).slice(0, D.eastBank.length / 2).filter(p => p[1] > 95 && p[1] < 300);
+    const at = d => { let acc = 0; for (let i = 0; i < bank.length - 1; i++) { const L = Math.hypot(bank[i + 1][0] - bank[i][0], bank[i + 1][1] - bank[i][1]); if (acc + L >= d) { const t = (d - acc) / L; return [lerp(bank[i][0], bank[i + 1][0], t), lerp(bank[i][1], bank[i + 1][1], t)]; } acc += L; } return null; };
+    const kv = VENUES.find(v => v.id === 'kasematte'); let k = 0;
+    for (let d = 4; ; d += 24) {
+      const a = at(d), b = at(d + 19); if (!a || !b) break;
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]), dx = (b[0] - a[0]) / L, dz = (b[1] - a[1]) / L;
+      let nx = -dz, nz = dx; if (inRiver(a[0] + nx * 4, a[1] + nz * 4)) { nx = -nx; nz = -nz; }
+      const o0 = 7.5, o1 = 14, pts = [[a[0] + nx * o0, a[1] + nz * o0], [b[0] + nx * o0, b[1] + nz * o0], [b[0] + nx * o1, b[1] + nz * o1], [a[0] + nx * o1, a[1] + nz * o1]];
+      const hit = buildings.some(B => B.pts.some(p => pip(p[0], p[1], pts)) || pts.some(p => pip(p[0], p[1], B.pts)))
+        || WALKS.some(w => w.pts.some(p => pip(p[0], p[1], pts)));
+      if (hit) continue;
+      if (polyArea(pts) < 0) pts.reverse();
+      buildings.push({ pts, h: 4.6, gable: false, kase: true });
+      const fx = (a[0] + b[0]) / 2 + nx * o0, fz = (a[1] + b[1]) / 2 + nz * o0;
+      KASE.push({ x: fx, z: fz, nx: -nx, nz: -nz, dx, dz, len: L });
+      if (k++ === 1 && kv) { kv.xz = [fx, fz]; kv.doorFix = { x: fx - nx * .02, z: fz - nz * .02, nx: -nx, nz: -nz }; }
+    }
   }
   // Oberkassel: Häuserreihen auf der anderen Rheinseite (nicht in den Daten, Kulisse)
   const west = flatToPts(D.river).slice(D.eastBank.length / 2);
@@ -768,6 +793,7 @@ function buildLandmarks() {
   const dots = new THREE.InstancedMesh(new THREE.SphereGeometry(.55, 6, 6), glowMat(0xffd28a, 5), 62);
   for (let i = 0; i < 62; i++) { const y = 42 + i * 1.9; const r = lerp(7.6, 5.0, (y - 30) / 90) + .2; dots.setMatrixAt(i, new THREE.Matrix4().makeTranslation(r * Math.sin(2.4), y, r * Math.cos(2.4))); }
   rt.add(dots); scene.add(rt);
+  boxCollider(rx, rz, 7.5, 7.5);
   // Schlossturm am Burgplatz
   const [sx, sz] = D.landmarks.schlossturm || [-168, -88];
   const st = new THREE.Group(); st.position.set(sx, 0, sz);
@@ -967,6 +993,23 @@ const VENUES = [
       wasted: ['Oh Mann. Pommes und Wasser. Keine Diskussion.', 'Du hast gerade die Ketchupflasche umarmt.'] } },
     menu: [D_('Pommes rot-weiß', 'Mayo und Ketchup', { food: true }, 'food'), D_('Currywurst mit Pommes', 'scharf oder normal', { food: true }, 'food'),
       D_('Döner mit allem', 'und scharf', { food: true }, 'food'), D_('Cola', 'eiskalt', { alc: 0 }, 'water', 0x2a1208), D_('Dose Bier', 'für den Weg', { alc: 7 }, 'beer', 0xd9a531)] },
+  { id: 'kasematte', name: 'Kasematte 7', short: 'Bar am Rhein', xz: [-260, 160], genre: 'kasematte', sign: 'KASEMATTE 7', color: 0xff9a50, theme: 'kasematte', room: [10, 18, 4.2],
+    host: { name: 'Nils, Kasematte', look: [0xe8e0d0, 0x2a3a5a, 0x8a6236], lines: {
+      sober: ['Moin! Hier sitzt man am schönsten am Rhein. Was trinkst du?', 'Aperol? Bier? Alles da.'],
+      tipsy: ['Guck mal raus, die Lichter auf dem Wasser. Herrlich, oder?', 'Noch eins für den Sonnenaufgang?'],
+      drunk: ['Nicht in den Rhein fallen, okay?', 'Du schwankst wie ein Boot, Kollege.'],
+      wasted: ['Setz dich auf die Treppe und guck aufs Wasser. Und trink das hier. Wasser.', 'Du hast gerade einem Schiff gewunken. Es war ein Mülleimer.'] } },
+    menu: [D_('Aperol Spritz', 'der Rhein-Klassiker', { alc: 8 }, 'cocktail', 0xff7a1a), D_('Hugo', 'Holunder, Minze, Prosecco', { alc: 7 }, 'cocktail', 0xd8ffb0),
+      D_('Pils', 'Flasche, eiskalt', { alc: 7 }, 'beer', 0xd9a531), D_('Gin Tonic', 'mit Gurke', { alc: 10 }, 'cocktail', 0xddeeff), D_('Wasser', 'mit Blick auf den Rhein', { alc: -4 }, 'water', 0xaaccff)] },
+  { id: 'rheinturm', name: 'Rheinturm Sky Lounge', short: 'Restaurant oben im Turm', xz: [0, 0], genre: 'tower', sign: 'SKY LOUNGE', color: 0x7ab8ff, theme: 'tower', room: [22, 22, 3.4],
+    round: 10.6, view: true, oy: 168,
+    host: { name: 'Herr Albers, Kellner', look: [0x0a0a0a, 0x0a0a0a, 0x9a9a9a], lines: {
+      sober: ['Guten Abend. Ein Platz am Fenster? Die Aussicht ist inklusive.', 'Darf es ein Champagner sein?'],
+      tipsy: ['Von hier oben sieht die Altstadt ganz friedlich aus, nicht wahr?', 'Noch ein Glas? Sehr gern.'],
+      drunk: ['Bitte nicht an die Scheibe lehnen, mein Herr.', 'Die Uhr da unten am Turm? Ja, die geht richtig. Meistens.'],
+      wasted: ['Ich bringe Ihnen einen Kaffee. Und dann den Aufzug.', 'Sie haben gerade versucht, Oberkassel zuzuwinken.'] } },
+    menu: [D_('Champagner', 'ein Glas, mit Aussicht', { alc: 8 }, 'wine', 0xf0e0a0), D_('Old Fashioned', 'Bourbon, Bitter, Orange', { alc: 11 }, 'cocktail', 0xb06a20),
+      D_('Rheinturm-Spritz', 'Hausrezept, blau', { alc: 8 }, 'cocktail', 0x3a8aff), D_('Rotwein', 'schwer und teuer', { alc: 8 }, 'wine', 0x5a0a1a), D_('Espresso', 'zum Runterkommen', { alc: -2 }, 'water', 0x2a140a)] },
 ];
 const BUEDCHEN = { name: 'Büdchen am Burgplatz', pos: [-140, -65], host: { name: 'Ali, Büdchen', lines: {
   sober: ['Na Chef, was brauchst du?', 'Alles da: Bier, Kippen, Chips.'], tipsy: ['Na, schon unterwegs gewesen?'],
@@ -980,7 +1023,7 @@ const KALLE_POS = [-216, -20];
 function placeVenueDoors() {
   for (const v of VENUES) {
     const [x, z] = v.xz || geo2xz(...v.at);
-    const w = nearestWall(x, z, 30) || { x, z, nx: 0, nz: 1 };
+    const w = v.doorFix || nearestWall(x, z, 30) || { x, z, nx: 0, nz: 1 };
     v.door = { x: w.x + w.nx * .06, z: w.z + w.nz * .06, nx: w.nx, nz: w.nz };
     v.outPos = [w.x + w.nx * 1.6, w.z + w.nz * 1.6];
   }
@@ -1075,7 +1118,7 @@ function buildStreetProps() {
   const bank = RIVER.slice(0, D.eastBank.length / 2), ledgeG = [];
   for (let i = 0; i < bank.length - 1; i++) {
     const [ax, az] = bank[i], [bx, bz] = bank[i + 1], L = Math.hypot(bx - ax, bz - az), mz = (az + bz) / 2;
-    if (mz < -260 || mz > 140 || L < 2) continue;
+    if (mz < -260 || mz > 90 || L < 2) continue;
     let nx = -(bz - az) / L, nz = (bx - ax) / L;
     if (inRiver((ax + bx) / 2 + nx * 3, mz + nz * 3)) { nx = -nx; nz = -nz; }
     const o = 2.6, x0 = ax + nx * o, z0 = az + nz * o, x1 = bx + nx * o, z1 = bz + nz * o, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
@@ -1085,6 +1128,33 @@ function buildStreetProps() {
     for (let d = .6; d < L - .4; d += 1.05) SEATS.push({ x: x0 + (x1 - x0) * d / L, z: z0 + (z1 - z0) * d / L, ry: Math.atan2(-nx, -nz), y: .45 });
   }
   if (ledgeG.length) scene.add(new THREE.Mesh(mergeGeometries(ledgeG), new THREE.MeshStandardMaterial({ map: TEX.stone, color: 0xa8a29a, roughness: .8 })));
+  // Terrassen vor den Kasematten: Bierzeltgarnituren und Heizpilze
+  const tabG = [], benchG = [], heatG = [];
+  for (const k of KASE) {
+    const ry = Math.atan2(k.dx, k.dz);
+    for (let i = 0; i < 4; i++) {
+      const along = -k.len / 2 + 2.5 + i * (k.len - 5) / 3, x = k.x + k.dx * along + k.nx * 3.2, z = k.z + k.dz * along + k.nz * 3.2;
+      tabG.push(new THREE.BoxGeometry(.7, .05, 2.2).applyMatrix4(mat4(x, .76, z, ry)));
+      tabG.push(new THREE.BoxGeometry(.08, .74, 1.8).applyMatrix4(mat4(x, .37, z, ry)));
+      boxCollider(x, z, .5, .5);
+      for (const sd of [-1, 1]) {
+        const bx = x + k.nx * sd * .62, bz = z + k.nz * sd * .62;
+        benchG.push(new THREE.BoxGeometry(.28, .05, 2.2).applyMatrix4(mat4(bx, .45, bz, ry)));
+        for (const e of [-.8, .8]) benchG.push(new THREE.BoxGeometry(.06, .45, .06).applyMatrix4(mat4(bx + k.dx * e, .22, bz + k.dz * e, ry)));
+        for (const e of [-.65, 0, .65]) SEATS.push({ x: bx + k.dx * e, z: bz + k.dz * e, ry: Math.atan2(-k.nx * sd, -k.nz * sd), y: .47, terrace: true });
+      }
+      if (i % 2) {
+        const hx = x + k.dx * 1.8 + k.nx * .2, hz = z + k.dz * 1.8 + k.nz * .2;
+        heatG.push(new THREE.CylinderGeometry(.04, .06, 2.2, 6).translate(hx, 1.1, hz), new THREE.CylinderGeometry(.18, .3, .3, 10).translate(hx, .15, hz), new THREE.ConeGeometry(.45, .3, 12).translate(hx, 2.35, hz));
+        doorLights.push({ x: hx, z: hz, y: 2.1, color: new THREE.Color(0xff6a20), k: 9 });
+      }
+    }
+  }
+  if (tabG.length) {
+    const wood = new THREE.MeshStandardMaterial({ color: 0x6a4a2a, roughness: .8 });
+    scene.add(new THREE.Mesh(mergeGeometries(tabG), wood), new THREE.Mesh(mergeGeometries(benchG), wood));
+    if (heatG.length) scene.add(new THREE.Mesh(mergeGeometries(heatG.map(g => { g.deleteAttribute('uv'); return g; })), new THREE.MeshStandardMaterial({ color: 0x8a8a90, metalness: .8, roughness: .3, emissive: 0x501800 })));
+  }
   // Altbierfässer (Kneipen) und Stehtische (Bars) vor den Türen
   const barrels = [], tables = [];
   const spots = [...D.pois.map(([type, x, z]) => [type, x, z]), ...VENUES.filter(v => !v.club).map(v => [v.id === 'koebes' ? 1 : 0, v.door.x, v.door.z])];
@@ -1181,18 +1251,27 @@ const IMAT = {
 };
 const interiors = [];
 function buildInterior(v, idx) {
-  const [W, Dp, H] = v.room, ox = 9000 + idx * 150, g = new THREE.Group(); g.position.set(ox, 0, 0);
+  const [W, Dp, H] = v.room, ox = v.ox ?? 9000 + idx * 150, oy = v.oy || 0, oz = v.oz || 0, g = new THREE.Group(); g.position.set(ox, oy, oz);
   const solid = [], lights = [], spots = [], acts = [], anim = [];
   const it_extra = {};
   const box = (w, h, d, mat, x, y, z, isSolid = false) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); g.add(m); if (isSolid) solid.push([x - w / 2, z - d / 2, x + w / 2, z + d / 2]); return m; };
   const plane = (w, h, mat, x, y, z, rx, ry) => { const pg = new THREE.PlaneGeometry(w, h), uv = pg.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 2.5, uv.getY(i) * h / 2.5); const m = new THREE.Mesh(pg, mat); m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, 0); g.add(m); return m; };
   const th = v.theme;
-  const floorM = { brauhaus: IMAT.woodDark, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.concrete, schlager: IMAT.tiles, chill: IMAT.carpet, shisha: IMAT.woodDark, cocktail: IMAT.woodDark, irish: IMAT.woodDark, karaoke: IMAT.carpet, imbiss: IMAT.tiles }[th];
-  const wallM = { brauhaus: IMAT.plaster, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.brick, schlager: IMAT.plaster, chill: IMAT.velvet, shisha: IMAT.black, cocktail: IMAT.woodDark, irish: IMAT.green, karaoke: IMAT.black, imbiss: IMAT.whiteTiles }[th];
-  plane(W, Dp, floorM, 0, 0, 0, -Math.PI / 2);
-  plane(W, Dp, IMAT.black, 0, H, 0, Math.PI / 2);
-  plane(W, H, wallM, 0, H / 2, -Dp / 2, 0, 0); plane(W, H, wallM, 0, H / 2, Dp / 2, 0, Math.PI);
-  plane(Dp, H, wallM, -W / 2, H / 2, 0, 0, Math.PI / 2); plane(Dp, H, wallM, W / 2, H / 2, 0, 0, -Math.PI / 2);
+  const floorM = { brauhaus: IMAT.woodDark, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.concrete, schlager: IMAT.tiles, chill: IMAT.carpet, shisha: IMAT.woodDark, cocktail: IMAT.woodDark, irish: IMAT.woodDark, karaoke: IMAT.carpet, imbiss: IMAT.tiles, tower: IMAT.carpet, kasematte: IMAT.woodLight }[th];
+  const wallM = { brauhaus: IMAT.plaster, rap: IMAT.concrete, eighties: IMAT.black, techno: IMAT.brick, schlager: IMAT.plaster, chill: IMAT.velvet, shisha: IMAT.black, cocktail: IMAT.woodDark, irish: IMAT.green, karaoke: IMAT.black, imbiss: IMAT.whiteTiles, tower: IMAT.black, kasematte: IMAT.brick }[th];
+  if (v.round) {
+    // runder Raum mit Glas rundherum (Rheinturm)
+    const fl = new THREE.Mesh(new THREE.CircleGeometry(v.round + .3, 48).rotateX(-Math.PI / 2), floorM); g.add(fl);
+    const ce = new THREE.Mesh(new THREE.CircleGeometry(v.round + .3, 48).rotateX(Math.PI / 2), IMAT.black); ce.position.y = H; g.add(ce);
+    const gl = new THREE.Mesh(new THREE.CylinderGeometry(v.round + .3, v.round + .3, H, 48, 1, true), new THREE.MeshStandardMaterial({ color: 0x8aa0c0, roughness: .05, metalness: .2, transparent: true, opacity: .12, side: THREE.DoubleSide, depthWrite: false, envMap: ENV }));
+    gl.position.y = H / 2; g.add(gl);
+    for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; box(.08, H, .08, IMAT.metal, Math.cos(a) * (v.round + .3), H / 2, Math.sin(a) * (v.round + .3)); }
+  } else {
+    plane(W, Dp, floorM, 0, 0, 0, -Math.PI / 2);
+    plane(W, Dp, IMAT.black, 0, H, 0, Math.PI / 2);
+    plane(W, H, wallM, 0, H / 2, -Dp / 2, 0, 0); plane(W, H, wallM, 0, H / 2, Dp / 2, 0, Math.PI);
+    plane(Dp, H, wallM, -W / 2, H / 2, 0, 0, Math.PI / 2); plane(Dp, H, wallM, W / 2, H / 2, 0, 0, -Math.PI / 2);
+  }
   if (th === 'brauhaus' || th === 'cocktail' || th === 'irish') box(W - .1, 1.2, .06, IMAT.woodDark, 0, .6, -Dp / 2 + .05);
   // Theke + Rückbuffet mit Flaschen
   const barW = Math.min(W * .55, 9), barZ = -Dp / 2 + 2;
@@ -1212,10 +1291,10 @@ function buildInterior(v, idx) {
   acts.push({ x: 0, z: barZ + 1.1, r: 2.2, label: 'Bestellen bei ' + v.host.name, act: () => openVenueMenu(v) });
   // Ausgang
   box(1.6, 2.4, .1, doorMat, 0, 1.2, Dp / 2 - .05);
-  const ex = neonSign('AUSGANG', 0x3aff6a, 1.6, .4); ex.position.set(0, 2.75, Dp / 2 - .08); ex.rotation.y = Math.PI; g.add(ex);
-  acts.push({ x: 0, z: Dp / 2 - 1, r: 1.8, label: 'Rausgehen', act: () => leaveVenue() });
+  const ex = neonSign(v.view ? 'AUFZUG' : 'AUSGANG', 0x3aff6a, 1.6, .4); ex.position.set(0, 2.75, Dp / 2 - .08); ex.rotation.y = Math.PI; g.add(ex);
+  acts.push({ x: 0, z: Dp / 2 - 1, r: 1.8, label: v.view ? 'Mit dem Aufzug runter' : 'Rausgehen', act: () => leaveVenue() });
   // Lichter
-  const L = (x, y, z, color, k, mode = 'static', extra = {}) => lights.push(Object.assign({ x: x + ox, y, z, color: new THREE.Color(color), k, mode }, extra));
+  const L = (x, y, z, color, k, mode = 'static', extra = {}) => lights.push(Object.assign({ x: x + ox, y: y + oy, z: z + oz, color: new THREE.Color(color), k, mode }, extra));
   const dim = th === 'brauhaus' ? .35 : th === 'imbiss' ? .12 : 1;
   L(0, H - .3, barZ + .5, v.color, 22 * dim, 'static'); L(-barW / 2, H - .4, barZ, 0xffd0a0, 12 * dim); L(barW / 2, H - .4, barZ, 0xffd0a0, 12 * dim);
   const grid = (nx, nz, x0, x1, z0, z1, f) => { for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) f(lerp(x0, x1, nx === 1 ? .5 : i / (nx - 1)), lerp(z0, z1, nz === 1 ? .5 : j / (nz - 1)), i, j); };
@@ -1333,6 +1412,30 @@ function buildInterior(v, idx) {
     for (let i = 0; i < 10; i++) spots.push({ mode: 'idle', x: lerp(-1.5, 3, rnd()), z: lerp(-3.5, 5.5, rnd()), ry: -Math.PI / 2 + (rnd() - .5) * .6, watch: true });
     L(sx, H - .3, 1, 0xffffff, 26, 'static'); grid(3, 1, -2, 6, 1, 1, (x, z, i) => L(x, H - .3, z, [0xff5ae0, 0x38e8ff, 0xffe04a][i], 18, 'chase', { s: i }));
     drawKaraokeScreen(it_extra.screen, null);
+  } else if (th === 'tower') {
+    // Rheinturm: Aufzugskern in der Mitte, Tische am Fenster mit Blick über Düsseldorf
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, H, 24), IMAT.concrete); core.position.set(0, H / 2, 2); g.add(core); solid.push([-2.4, -.4, 2.4, 4.4]);
+    for (let i = 0; i < 14; i++) {
+      const a = i / 14 * Math.PI * 2 + .2, r = v.round - 1.6, x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (z < -5.5 && Math.abs(x) < 6) continue;   // Platz für die Bar
+      box(.8, .05, .8, IMAT.woodLight, x, .74, z); box(.08, .74, .08, IMAT.metal, x, .37, z, true);
+      const cand = new THREE.Mesh(new THREE.SphereGeometry(.03, 6, 4), glowMat(0xffb060, 4)); cand.position.set(x, .8, z); g.add(cand);
+      for (const s of [-1, 1]) { const rr = r + s * .7, px = Math.cos(a) * rr, pz = Math.sin(a) * rr; spots.push({ mode: 'sit', x: px, z: pz, ry: Math.atan2(x - px, z - pz), y: .46 }); }
+    }
+    grid(3, 1, -4, 4, -6, -6, (x, z) => L(x, H - .3, z, 0xffc890, 5, 'static'));
+    L(0, H - .3, 5, 0xffc890, 3, 'breathe', { s: 0 });
+  } else if (th === 'kasematte') {
+    // Kasematte: Backstein-Gewölbe in der Kaimauer, Lounge, Lichterkette
+    const vault = new THREE.Mesh(new THREE.CylinderGeometry(W / 2, W / 2, Dp, 24, 1, true, -Math.PI / 2, Math.PI), IMAT.brick);
+    vault.material = IMAT.brick.clone(); vault.material.side = THREE.BackSide; vault.rotation.x = Math.PI / 2; vault.rotation.y = Math.PI / 2; vault.scale.set(1, 1, .32); vault.position.y = H - .2; g.add(vault);
+    for (let i = 0; i < 3; i++) for (const s of [-1, 1]) sofa(s * (W / 2 - .6), -1.5 + i * 3, s < 0 ? Math.PI / 2 : -Math.PI / 2, 2.4, IMAT.leather);
+    for (let i = 0; i < 3; i++) for (const s of [-1, 1]) box(.8, .45, .8, IMAT.woodDark, s * (W / 2 - 1.8), .22, -1.5 + i * 3, true);
+    const pts = []; for (let i = 0; i <= 40; i++) { const z = -Dp / 2 + 1 + i * (Dp - 2) / 40; pts.push(Math.sin(i * .9) * .4, H - .5 - Math.abs(Math.sin(i * .5)) * .3, z); }
+    const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    g.add(new THREE.Points(fg, new THREE.PointsMaterial({ size: .18, map: DOT_TEX, color: new THREE.Color(1, .75, .45).multiplyScalar(2.5), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })));
+    for (let i = 0; i < 12; i++) spots.push({ mode: 'idle', x: lerp(-2.5, 2.5, rnd()), z: lerp(-2, 4.5, rnd()), ry: rnd() * 6 });
+    dancefloor(-2, 2, 2, 5, 8);
+    grid(2, 3, -3, 3, -3, 4, (x, z, i) => L(x, H - .6, z, i % 2 ? 0xff9a50 : 0xffc080, 10, 'breathe', { s: i }));
   } else if (th === 'imbiss') {
     // Theke mit Fritteuse, leuchtende Speisekarte, Stehtische
     for (const x of [-2, 0, 2]) box(1.1, .3, .5, IMAT.metal, x, 1.3, -Dp / 2 + .3);
@@ -1347,7 +1450,7 @@ function buildInterior(v, idx) {
     grid(2, 2, -3, 3, -2, 2.5, (x, z) => L(x, H - .2, z, 0xf0f4ff, 2.2, 'static'));
   }
   scene.add(g);
-  const it = { v, g, ox, W, Dp, H, solid, lights, spots, acts, anim, spawn: [ox, Dp / 2 - 3.2], ...it_extra };
+  const it = { v, g, ox, oy, oz, W, Dp, H, round: v.round, solid, lights, spots, acts, anim, spawn: [ox, oz + Dp / 2 - 3.2], ...it_extra };
   v.interior = it; interiors.push(it); return it;
 }
 
@@ -1902,6 +2005,176 @@ function npcExhale(o) {
 }
 
 // =====================================================================
+//  Schiffe auf dem Rhein: Partyschiff mit Musik und Leuten an Deck, Frachter
+// =====================================================================
+const RIVER_E = flatToPts(D.river).slice(0, D.eastBank.length / 2), RIVER_W = flatToPts(D.river).slice(D.eastBank.length / 2);
+function xAtZ(poly, z) {
+  let best = null, bd = 1e9;
+  for (let i = 0; i < poly.length - 1; i++) {
+    const [ax, az] = poly[i], [bx, bz] = poly[i + 1];
+    if ((az - z) * (bz - z) <= 0 && az !== bz) return lerp(ax, bx, (z - az) / (bz - az));
+    const d = Math.min(Math.abs(az - z), Math.abs(bz - z)); if (d < bd) { bd = d; best = Math.abs(az - z) < Math.abs(bz - z) ? ax : bx; }
+  }
+  return best;
+}
+const riverMid = z => (xAtZ(RIVER_E, z) + xAtZ(RIVER_W, z)) / 2;
+const SHIPS = [];
+const shipCrowd = new People(16, 16);
+function buildShips() {
+  const hullM = new THREE.MeshStandardMaterial({ color: 0x1a2236, roughness: .5, metalness: .3 }), white = new THREE.MeshStandardMaterial({ color: 0xdcdcd8, roughness: .6 });
+  // Partyschiff
+  const p = new THREE.Group();
+  p.add(new THREE.Mesh(new THREE.BoxGeometry(8, 2.4, 44), hullM).translateY(.3));
+  p.add(new THREE.Mesh(new THREE.BoxGeometry(7.6, .12, 43), new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: .7 })).translateY(1.55));
+  p.add(new THREE.Mesh(new THREE.BoxGeometry(6.6, 2.4, 28), white).translateY(2.8).translateZ(-4));
+  for (const sx of [-3.32, 3.32]) p.add(new THREE.Mesh(new THREE.PlaneGeometry(27, 1.1), glowMat(0xffc890, 1.6)).translateX(sx).translateY(2.9).translateZ(-4).rotateY(sx < 0 ? -Math.PI / 2 : Math.PI / 2));
+  p.add(new THREE.Mesh(new THREE.BoxGeometry(6.6, .1, 28), new THREE.MeshStandardMaterial({ color: 0x3a3a3e })).translateY(4.05).translateZ(-4));
+  const bp = [], bc = [], c = new THREE.Color();
+  for (let i = 0; i <= 60; i++) { const z = -18 + i * .6; for (const sx of [-3.3, 3.3]) { bp.push(sx, 4.6 - Math.abs(Math.sin(i * .35)) * .3, z - 4); c.setHSL((i * .07) % 1, 1, .6); bc.push(c.r * 2.5, c.g * 2.5, c.b * 2.5); } }
+  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(bc, 3));
+  p.add(new THREE.Points(bg, new THREE.PointsMaterial({ size: .35, map: DOT_TEX, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })));
+  const sign = neonSign('PARTYSCHIFF', 0xff3d9a, 5, 1); sign.position.set(0, 5.1, 10.2); p.add(sign);
+  scene.add(p); SHIPS.push({ g: p, z: -300, dir: 1, speed: 2.6, xo: 18, party: true });
+  for (let i = 0; i < 14; i++) shipCrowd.add({ mode: i % 3 ? 'dance' : 'idle', act: 'cheer', x: 0, z: 0, ry: rnd() * 6, lx: (rnd() - .5) * 5.5, lz: -17 + rnd() * 26, always: true, prop: rnd() < .5 ? PROP.bottle : 0 });
+  // Frachter
+  const f = new THREE.Group();
+  f.add(new THREE.Mesh(new THREE.BoxGeometry(11, 3.2, 86), new THREE.MeshStandardMaterial({ color: 0x3a1a16, roughness: .7 })).translateY(.6));
+  f.add(new THREE.Mesh(new THREE.BoxGeometry(10.4, 1.4, 60), new THREE.MeshStandardMaterial({ color: 0x2a2e34, roughness: .8 })).translateY(2.6).translateZ(4));
+  f.add(new THREE.Mesh(new THREE.BoxGeometry(8, 4.2, 6), white).translateY(4.2).translateZ(-37));
+  f.add(new THREE.Mesh(new THREE.PlaneGeometry(7, .8), glowMat(0xffe0b0, 1.4)).translateY(5.4).translateZ(-33.95));
+  for (const [x, col] of [[-5.6, 0xff2010], [5.6, 0x20ff40]]) f.add(new THREE.Mesh(new THREE.SphereGeometry(.25, 8, 6), glowMat(col, 6)).translateX(x).translateY(3).translateZ(30));
+  f.add(new THREE.Mesh(new THREE.SphereGeometry(.25, 8, 6), glowMat(0xffffff, 6)).translateY(8).translateZ(-37));
+  scene.add(f); SHIPS.push({ g: f, z: 600, dir: -1, speed: 3.4, xo: -25 });
+}
+function updateShips(dt, t) {
+  for (const sh of SHIPS) {
+    sh.z += sh.dir * sh.speed * dt;
+    if (sh.z > 900 || sh.z < -1100) sh.dir = -sh.dir;
+    const x = riverMid(sh.z) + sh.xo * sh.dir, a = Math.atan2(riverMid(sh.z + 6) - riverMid(sh.z - 6), 12);
+    sh.g.position.set(x, -1.6 + Math.sin(t * .7 + sh.z) * .05, sh.z); sh.g.rotation.y = sh.dir > 0 ? a : a + Math.PI;
+    if (sh.party) {
+      SHIP_POS[0] = x; SHIP_POS[1] = sh.z;
+      const ry = sh.g.rotation.y, cs = Math.cos(ry), sn = Math.sin(ry);
+      for (const o of shipCrowd.list) { o.x = x + cs * o.lx + sn * o.lz; o.z = sh.z - sn * o.lx + cs * o.lz; o.gy = -1.6 + 1.6; shipCrowd.pose(o, t); }
+      shipCrowd.flush();
+    }
+  }
+}
+const SHIP_POS = [0, 0];
+
+// =====================================================================
+//  Verkehr am Rand der Altstadt: Autos, Taxis, Straßenbahn (die Altstadt selbst bleibt autofrei)
+// =====================================================================
+function roadChains(filter) {
+  const ways = ROADS.filter(filter).map(r => r.pts), key = p => p[0].toFixed(1) + ',' + p[1].toFixed(1), ends = new Map(), used = new Set(), out = [];
+  ways.forEach((w, i) => { for (const p of [w[0], w[w.length - 1]]) { const k = key(p); if (!ends.has(k)) ends.set(k, []); ends.get(k).push(i); } });
+  for (let i = 0; i < ways.length; i++) {
+    if (used.has(i)) continue; used.add(i); let c = ways[i].slice();
+    for (let side = 0; side < 2; side++) for (let grow = true; grow;) {
+      grow = false; const k = key(side ? c[0] : c[c.length - 1]);
+      for (const j of ends.get(k) || []) if (!used.has(j)) {
+        used.add(j); let w = ways[j].slice(); grow = true;
+        if (side) { if (key(w[0]) === k) w.reverse(); c = w.slice(0, -1).concat(c); } else { if (key(w[0]) !== k) w.reverse(); c = c.concat(w.slice(1)); }
+        break;
+      }
+    }
+    const cum = [0]; for (let k = 1; k < c.length; k++) cum.push(cum[k - 1] + Math.hypot(c[k][0] - c[k - 1][0], c[k][1] - c[k - 1][1]));
+    if (cum[cum.length - 1] > 120 && c.some(p => Math.hypot(p[0], p[1]) < 700)) out.push({ pts: c, cum, len: cum[cum.length - 1] });
+  }
+  return out;
+}
+function chainAt(c, d, off = 0) {
+  d = clamp(d, 0, c.len - .01); let i = 1; while (i < c.cum.length - 1 && c.cum[i] < d) i++;
+  const a = c.pts[i - 1], b = c.pts[i], L = c.cum[i] - c.cum[i - 1] || 1, t = (d - c.cum[i - 1]) / L, dx = (b[0] - a[0]) / L, dz = (b[1] - a[1]) / L;
+  return [lerp(a[0], b[0], t) - dz * off, lerp(a[1], b[1], t) + dx * off, Math.atan2(dx, dz)];
+}
+const CARS = [], CAR_COLS = [0x101012, 0xe8e8e8, 0x2a3a5a, 0x8a1a1a, 0x5a5a60, 0x1a1a1a, 0xb0b0b8, 0x0a2a4a, 0x3a3a2a];
+let carMesh, tram = null;
+function buildTraffic() {
+  const chains = roadChains(r => r.type >= 2 || r.name === 'Königsallee');
+  const body = mergeGeometries([new THREE.BoxGeometry(1.8, .62, 4.3).translate(0, .55, 0), new THREE.BoxGeometry(1.7, .25, 1.2).translate(0, .95, 1.4), new THREE.BoxGeometry(1.7, .25, .9).translate(0, .95, -1.65)]);
+  const dark = mergeGeometries([new THREE.BoxGeometry(1.62, .55, 2.2).translate(0, 1.12, -.25),
+    ...[[-.85, 1.35], [.85, 1.35], [-.85, -1.35], [.85, -1.35]].map(([x, z]) => new THREE.CylinderGeometry(.33, .33, .22, 12).rotateZ(Math.PI / 2).translate(x, .33, z))].map(g => { g.deleteAttribute('uv'); return g; }));
+  const lamp = (x, y, z, r, g, b) => { const q = new THREE.BoxGeometry(.32, .14, .04).translate(x, y, z); const n = q.attributes.position.count, c = []; for (let i = 0; i < n; i++) c.push(r, g, b); q.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); q.deleteAttribute('uv'); return q; };
+  const lights = mergeGeometries([lamp(-.6, .62, 2.16, 4, 3.8, 3.2), lamp(.6, .62, 2.16, 4, 3.8, 3.2), lamp(-.62, .66, -2.16, 3, .1, .05), lamp(.62, .66, -2.16, 3, .1, .05)]);
+  const [bc, bg] = makeCanvas(64, 128), grd = bg.createRadialGradient(32, 128, 4, 32, 90, 90); grd.addColorStop(0, 'rgba(255,240,210,.55)'); grd.addColorStop(1, 'rgba(255,240,210,0)'); bg.fillStyle = grd; bg.fillRect(0, 0, 64, 128);
+  const beam = new THREE.PlaneGeometry(3.2, 9).rotateX(-Math.PI / 2).translate(0, .04, 6.6);
+  const N = 44, taxisParked = 5;
+  const mk = (geo, mat) => { const m = new THREE.InstancedMesh(geo, mat, N); m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; scene.add(m); return m; };
+  carMesh = {
+    body: mk(body, new THREE.MeshStandardMaterial({ roughness: .25, metalness: .7, envMap: ENV, envMapIntensity: 1.2 })),
+    dark: mk(dark, new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: .1, metalness: .3, envMap: ENV })),
+    lights: mk(lights, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false })),
+    beam: mk(beam, new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(bc), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -10 })),
+    sign: mk(new THREE.BoxGeometry(.5, .16, .22).translate(0, 1.47, -.2), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, .85, .3).multiplyScalar(2.5), toneMapped: false })),
+  };
+  const r = mulberry32(404);
+  if (chains.length) for (let i = 0; i < N - taxisParked; i++) {
+    const c = chains[Math.floor(r() * chains.length)], taxi = i < 7;
+    CARS.push({ c, d: r() * c.len, dir: r() < .5 ? 1 : -1, speed: 8 + r() * 5, v: 0, col: taxi ? 0xf0e6c8 : pick(CAR_COLS, r), taxi });
+  }
+  // Taxistand an der Heinrich-Heine-Allee, Richtung Bolkerstraße
+  const hh = chains.filter(c => c.pts.some(p => Math.hypot(p[0] - 150, p[1] - 40) < 120));
+  if (hh.length) {
+    const c = hh[0]; let best = 0, bd = 1e9; for (let d = 0; d < c.len; d += 2) { const [x, z] = chainAt(c, d); const dd = Math.hypot(x - 140, z - 35); if (dd < bd) { bd = dd; best = d; } }
+    for (let k = 0; k < taxisParked; k++) CARS.push({ c, d: best + k * 5.5, dir: 1, speed: 0, v: 0, col: 0xf0e6c8, taxi: true, parked: true, lane: ROAD_W[2] / 2 - 1 });
+  }
+  CARS.forEach((car, i) => { carMesh.body.setColorAt(i, new THREE.Color(car.col)); });
+  carMesh.body.instanceColor.needsUpdate = true;
+  // Straßenbahn auf der Heinrich-Heine-Allee
+  const tc = roadChains(r => r.name === 'Heinrich-Heine-Allee').sort((a, b) => b.len - a.len)[0];
+  if (tc) {
+    const g = new THREE.Group(), white = new THREE.MeshStandardMaterial({ color: 0xe8e8e4, roughness: .4, metalness: .3, envMap: ENV }), red = new THREE.MeshStandardMaterial({ color: 0x9a1a1a, roughness: .5 });
+    const segs = [];
+    for (let k = 0; k < 3; k++) {
+      const sg = new THREE.Group();
+      sg.add(new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.9, 9.6), white).translateY(1.85));
+      sg.add(new THREE.Mesh(new THREE.BoxGeometry(2.42, .35, 9.62), red).translateY(.75));
+      for (const sx of [-1.215, 1.215]) sg.add(new THREE.Mesh(new THREE.PlaneGeometry(8.6, 1), glowMat(0xfff0d8, 1.3)).translateX(sx).translateY(2.2).rotateY(sx < 0 ? -Math.PI / 2 : Math.PI / 2));
+      if (k === 0) sg.add(new THREE.Mesh(new THREE.PlaneGeometry(1.8, .3), glowMat(0xffa020, 3)).translateY(3.05).translateZ(4.81));
+      g.add(sg); segs.push(sg);
+    }
+    scene.add(g);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, 2, 4), MAT.dark); pole.rotation.x = .6; pole.position.set(0, 3.8, 0); segs[1].add(pole);
+    tram = { c: tc, d: 20, dir: 1, speed: 9, v: 9, segs, bellT: 0 };
+  }
+}
+const _cm = new THREE.Matrix4(), _cq = new THREE.Quaternion(), _cv = new THREE.Vector3(), _cs = new THREE.Vector3(1, 1, 1), _ce = new THREE.Euler();
+function updateTraffic(dt, t) {
+  if (!carMesh) return;
+  let nSign = 0;
+  CARS.forEach((car, i) => {
+    if (!car.parked) {
+      // abbremsen, wenn der Spieler (oder ein Auto) vor einem steht
+      const [x, z, h] = chainAt(car.c, car.d, 1.9 * car.dir), fx = Math.sin(h) * car.dir, fz = Math.cos(h) * car.dir;
+      const px = P.x - x, pz = P.z - z, ahead = px * fx + pz * fz, side = Math.abs(px * fz - pz * fx);
+      let target = car.speed;
+      if (!GAME.inside && ahead > 0 && ahead < 9 && side < 2) { target = 0; if ((car.honk || 0) < t && ahead < 6) { car.honk = t + 6; Sound.honk(Math.hypot(px, pz)); } }
+      car.v = lerp(car.v, target, 1 - Math.exp(-dt * (target < car.v ? 4 : 1)));
+      car.d += car.v * car.dir * dt;
+      if (car.d > car.c.len || car.d < 0) { car.dir = -car.dir; car.d = clamp(car.d, 0, car.c.len); }
+    }
+    const [x, z, h] = chainAt(car.c, car.d, car.parked ? car.lane : 1.9 * car.dir);
+    car.x = x; car.z = z;
+    _ce.set(0, h + (car.dir < 0 ? Math.PI : 0), 0); _cq.setFromEuler(_ce);
+    _cm.compose(_cv.set(x, onBridge(x, z) ? .35 : 0, z), _cq, _cs);
+    for (const k of ['body', 'dark', 'lights', 'beam']) carMesh[k].setMatrixAt(i, _cm);
+    if (car.taxi) carMesh.sign.setMatrixAt(nSign++, _cm);
+  });
+  for (const k of ['body', 'dark', 'lights', 'beam']) { carMesh[k].count = CARS.length; carMesh[k].instanceMatrix.needsUpdate = true; }
+  carMesh.sign.count = nSign; carMesh.sign.instanceMatrix.needsUpdate = true;
+  if (tram) {
+    const [x0, z0, h0] = chainAt(tram.c, tram.d), fx = Math.sin(h0) * tram.dir, fz = Math.cos(h0) * tram.dir, ahead = (P.x - x0) * fx + (P.z - z0) * fz, side = Math.abs((P.x - x0) * fz - (P.z - z0) * fx);
+    const stop = !GAME.inside && ahead > 0 && ahead < 16 && side < 2.5;
+    if (stop && tram.bellT < t) { tram.bellT = t + 5; Sound.tramBell(Math.hypot(P.x - x0, P.z - z0)); }
+    tram.v = lerp(tram.v, stop ? 0 : tram.speed, 1 - Math.exp(-dt * (stop ? 3 : .6)));
+    tram.d += tram.v * tram.dir * dt;
+    if (tram.d > tram.c.len - 16 || tram.d < 16) { tram.dir = -tram.dir; tram.d = clamp(tram.d, 16, tram.c.len - 16); }
+    tram.segs.forEach((sg, k) => { const [x, z, h] = chainAt(tram.c, tram.d - tram.dir * k * 10); sg.position.set(x, 0, z); sg.rotation.y = h + (tram.dir < 0 ? Math.PI : 0); });
+  }
+}
+
+// =====================================================================
 //  Rauch-Partikel & Gegenstände in der Hand
 // =====================================================================
 const SMOKE = [];
@@ -1944,7 +2217,7 @@ hand.position.copy(HAND_REST);
 const mf = m => 440 * Math.pow(2, (m - 69) / 12);
 const FOLDER_GENRE = { 'strasse': 'strasse', 'deutschrap-club': 'rap', 'chill-lounge': 'chill', '80er-kneipe': '80s', 'techno-keller': 'techno',
   'schlager-bar': 'schlager', 'shisha-lounge': 'shisha', 'brauhaus': 'brauhaus', 'cocktailbar': 'lounge',
-  'irish-pub': 'irish', 'karaoke-bar': 'karaoke', 'imbiss': 'imbiss', 'strassenmusik': 'busker' };
+  'irish-pub': 'irish', 'karaoke-bar': 'karaoke', 'imbiss': 'imbiss', 'strassenmusik': 'busker', 'kasematte': 'kasematte', 'rheinturm': 'tower' };
 const FILES = {};
 
 class Synth {
@@ -2120,6 +2393,8 @@ const PATTERN = {
 
 GEN.karaoke = { ...GEN['80s'], title: 'Kehlkopf · Karaoke-Hits' }; PATTERN.karaoke = PATTERN['80s'];
 GEN.imbiss = { ...GEN.strasse, title: 'Pommes Paradies · Imbiss-Radio' }; PATTERN.imbiss = PATTERN.chill;
+GEN.kasematte = { ...GEN.chill, title: 'Kasematte 7 · Sunset-Beats am Rhein', bpm: 98 }; PATTERN.kasematte = PATTERN.chill;
+GEN.tower = { ...GEN.lounge, title: 'Rheinturm · Sky Lounge Jazz', bpm: 84 }; PATTERN.tower = PATTERN.lounge;
 
 class Groove {
   constructor(genre, out) { this.genre = genre; this.g = GEN[genre]; this.o = out; this.seed = Math.random() * 1000; this.step = 0; this.next = 0; this.timer = null; }
@@ -2196,6 +2471,7 @@ const Sound = {
     for (const p of POI_DOORS) this.channels.push(new Channel(pick(G[p.type], r), [p.x, p.z], p.type === 2 ? 1.2 : .8));
     if (RHEIN_BOX) this.channels.push(new Channel('rap', RHEIN_BOX, .75));   // Musikbox am Rheinufer
     if (BUSKER) this.channels.push(new Channel('busker', BUSKER, 1.1));
+    this.channels.push(new Channel('schlager', SHIP_POS, 1.6));   // Partyschiff (Position wandert mit)
     this.ready = true;
   },
   setFiles(list) {
@@ -2265,6 +2541,8 @@ const Sound = {
   cough() { if (!this.ready) return; const t = this.ctx.currentTime; for (let k = 0; k < 3; k++) this.synth.nz(this.sfx, t + k * .27, .3 - k * .06, 'lowpass', 1700, 1, .14, .01); },
   vomit() { if (!this.ready) return; const t = this.ctx.currentTime; this.synth.nz(this.sfx, t, .4, 'lowpass', 500, 2, 1.1, .05, 200); this.synth.tone(this.sfx, t, 110, .8, { type: 'sawtooth', v: .08, r: .3, lp: 400, glide: 70 }); },
   heartbeat() { if (!this.ready) return; const t = this.ctx.currentTime; this.synth.kick(this.sfx, t, .5, 70, 38, .2); this.synth.kick(this.sfx, t + .22, .35, 65, 36, .2); },
+  honk(d = 10) { if (!this.ready) return; const t = this.ctx.currentTime, v = clamp(1.4 / (1 + d * .12)) * .09; for (const f of [392, 494]) { this.synth.tone(this.sfx, t, f, .35, { type: 'square', v, a: .01, r: .05, lp: 1800 }); this.synth.tone(this.sfx, t + .45, f, .2, { type: 'square', v, a: .01, r: .05, lp: 1800 }); } },
+  tramBell(d = 10) { if (!this.ready) return; const t = this.ctx.currentTime, v = clamp(1.4 / (1 + d * .08)) * .08; for (let k = 0; k < 2; k++) { this.synth.bell(this.sfx, t + k * .28, 1568, v); this.synth.bell(this.sfx, t + k * .28, 2093, v * .6); } },
   door() { if (!this.ready) return; const t = this.ctx.currentTime; this.synth.nz(this.sfx, t, .25, 'lowpass', 300, 1, .3); this.synth.tone(this.sfx, t, 320, .2, { type: 'sawtooth', v: .02, r: .1, lp: 800, glide: 240 }); },
 };
 
@@ -2362,9 +2640,10 @@ function collide(ox, oz, x, z) {
   const R = .35;
   if (GAME.inside) {
     const it = GAME.inside.interior, lx0 = it.ox - it.W / 2 + R, lx1 = it.ox + it.W / 2 - R;
-    x = clamp(x, lx0, lx1); z = clamp(z, -it.Dp / 2 + R, it.Dp / 2 - R);
+    x = clamp(x, lx0, lx1); z = clamp(z, it.oz - it.Dp / 2 + R, it.oz + it.Dp / 2 - R);
+    if (it.round) { const dx = x - it.ox, dz = z - it.oz, d = Math.hypot(dx, dz), m = it.round - R; if (d > m) { x = it.ox + dx / d * m; z = it.oz + dz / d * m; } }
     for (const [a, b, c, d] of it.solid) {
-      const x0 = a + it.ox - R, x1 = c + it.ox + R, z0 = b - R, z1 = d + R;
+      const x0 = a + it.ox - R, x1 = c + it.ox + R, z0 = b + it.oz - R, z1 = d + it.oz + R;
       if (x > x0 && x < x1 && z > z0 && z < z1) {
         const m = [x - x0, x1 - x, z - z0, z1 - z], k = m.indexOf(Math.min(...m));
         if (k === 0) x = x0; else if (k === 1) x = x1; else if (k === 2) z = z0; else z = z1;
@@ -2396,7 +2675,7 @@ function cameraClearance() {
   const it = GAME.inside && GAME.inside.interior;
   for (let s = .1; s <= 1.001; s += .075) {
     const x = P.x + _cw.x * s, z = P.z + _cw.z * s, y = head.position.y + _cw.y * s;
-    const hit = y < .3 || (it ? Math.abs(x - it.ox) > it.W / 2 - .3 || Math.abs(z) > it.Dp / 2 - .3 || y > it.H - .25 : insideBuilding(x, z));
+    const hit = y < (it ? it.oy : 0) + .3 || (it ? (it.round ? Math.hypot(x - it.ox, z - it.oz) > it.round - .3 : Math.abs(x - it.ox) > it.W / 2 - .3 || Math.abs(z - it.oz) > it.Dp / 2 - .3) || y - it.oy > it.H - .25 : insideBuilding(x, z));
     if (hit) return Math.max(.1, s - .12);
   }
   return 1;
@@ -2443,7 +2722,7 @@ function updatePlayer(dt, t) {
   const [nx, nz] = collide(P.x, P.z, P.x + P.vx * dt, P.z + P.vz * dt);
   const moved = Math.hypot(nx - P.x, nz - P.z); P.x = nx; P.z = nz;
   if (!GAME.inside) P.lastOut = [P.x, P.z];
-  P.gy = lerp(P.gy, !GAME.inside && onBridge(P.x, P.z) ? .35 : 0, 1 - Math.exp(-dt * 6));
+  P.gy = GAME.inside ? GAME.inside.interior.oy : lerp(P.gy, onBridge(P.x, P.z) ? .35 : 0, 1 - Math.exp(-dt * 6));
   // Schritte + Kopfbewegung
   P.bob += moved * 2.1; P.stepAcc += moved;
   if (P.stepAcc > .78) { P.stepAcc = 0; Sound.step(KEYS.ShiftLeft ? 1.3 : 1); }
@@ -2567,7 +2846,7 @@ function buildOutsideActs() {
 }
 function currentAct() {
   let best = null, bd = 1e9;
-  const list = GAME.inside ? GAME.inside.interior.acts.map(a => ({ ...a, x: a.x + GAME.inside.interior.ox })) : OUTSIDE_ACTS;
+  const list = GAME.inside ? GAME.inside.interior.acts.map(a => ({ ...a, x: a.x + GAME.inside.interior.ox, z: a.z + GAME.inside.interior.oz })) : OUTSIDE_ACTS;
   for (const a of list) { const d = Math.hypot(a.x - P.x, a.z - P.z); if (d < a.r && d < bd) { bd = d; best = a; } }
   if (KARAOKE.on && best && best.label.startsWith('Auf die Bühne')) best = null;
   if (!best) { const o = nearestPerson(); if (o) best = o.rose && o.approach ? { label: 'Rose kaufen 🌹', act: () => { o.bought = true; thought(pick(['Eine Rose. Für wen eigentlich?', 'Die schenk ich Kalle.', 'Romantisch. Glaub ich.'])); } }
@@ -2581,7 +2860,8 @@ function enterVenue(v) {
   Sound.door();
   fadeThen(() => {
     GAME.inside = v; const it = v.interior;
-    P.x = it.spawn[0]; P.z = it.spawn[1]; P.vx = P.vz = 0; setYaw(0); P.face = Math.PI;
+    P.x = it.spawn[0]; P.z = it.spawn[1]; P.gy = it.oy; P.vx = P.vz = 0; setYaw(0); P.face = Math.PI;
+    if (v.view) setTimeout(() => showMsg('🛗 Der Aufzug saust in 40 Sekunden auf 168 Meter. Ohren knacken. Guck mal raus!', 6), 800);
     setupIndoorCrowd(v);
     if (v.club && Math.random() < .6) setTimeout(() => thought(pick(['Boah, der Bass...', 'Hier geht\'s ab.', 'Erstmal zur Theke.'])), 1200);
     else setTimeout(() => thought(pick(['Gemütlich hier.', 'Erstmal was bestellen.', 'Hier bleib ich.'])), 1200);
@@ -2590,19 +2870,19 @@ function enterVenue(v) {
 function leaveVenue(instant = false) {
   const v = GAME.inside; if (!v) return;
   const go = () => {
-    GAME.inside = null; GAME.shisha = null; GAME.koebesAlt = false; GAME.koebesT = -1; GAME.haze = 0;
+    GAME.inside = null; P.gy = 0; GAME.shisha = null; GAME.koebesAlt = false; GAME.koebesT = -1; GAME.haze = 0;
     P.x = v.outPos[0]; P.z = v.outPos[1]; P.vx = P.vz = 0; setYaw(Math.atan2(-v.door.nx, -v.door.nz)); P.face = Math.atan2(v.door.nx, v.door.nz);
     indoor.clear();
   };
   Sound.door(); if (instant) go(); else fadeThen(go);
 }
-const HAZE = { irish: [0x10120a, .02], karaoke: [0x140814, .022], imbiss: [0x101010, .006], brauhaus: [0x1a120a, .016], rap: [0x220606, .04], eighties: [0x160516, .022], techno: [0x05081a, .045], schlager: [0x181008, .012], chill: [0x120a18, .025], shisha: [0x0c1a22, .03], cocktail: [0x05101a, .018] };
+const HAZE = { tower: [0x1a1524, .0011], kasematte: [0x140c08, .02], irish: [0x10120a, .02], karaoke: [0x140814, .022], imbiss: [0x101010, .006], brauhaus: [0x1a120a, .016], rap: [0x220606, .04], eighties: [0x160516, .022], techno: [0x05081a, .045], schlager: [0x181008, .012], chill: [0x120a18, .025], shisha: [0x0c1a22, .03], cocktail: [0x05101a, .018] };
 function setupIndoorCrowd(v) {
   const it = v.interior; indoor.list.length = 0;
   const spots = [...it.spots].sort(() => Math.random() - .5).sort((a, b) => (b.host ? 1 : 0) - (a.host ? 1 : 0) || (b.koebes ? 1 : 0) - (a.koebes ? 1 : 0));
   const drinkProp = v.theme === 'brauhaus' ? PROP.glass : PROP.bottle;
   for (const s of spots.slice(0, indoor.n)) {
-    const o = indoor.add({ x: s.x + it.ox, z: s.z, y: s.y, ry: s.ry ?? Math.random() * 6, mode: s.mode === 'bar' ? 'idle' : s.mode, home: s, always: true });
+    const o = indoor.add({ x: s.x + it.ox, z: s.z + it.oz, gy: it.oy, y: s.y, ry: s.ry ?? Math.random() * 6, mode: s.mode === 'bar' ? 'idle' : s.mode, home: s, always: true });
     if (s.host || s.koebes) { dressLook(o, v.host.look); o.act = s.host ? 'counter' : 'pockets'; o.prop = s.koebes ? PROP.glass : 0; o.host = true; }
     else {
       o.act = pick(['talk', 'talk', 'listen', 'laugh', 'cheer', 'pockets']);
@@ -2620,7 +2900,7 @@ function updateIndoorCrowd(dt, t) {
   for (const o of indoor.list) {
     if (o.mode === 'roam') {
       const dx = o.tx - o.x, dz = o.tz - o.z, d = Math.hypot(dx, dz);
-      if (d < .3) { o.tx = it.ox + (Math.random() - .5) * (it.W - 4); o.tz = (Math.random() - .3) * (it.Dp - 5); }
+      if (d < .3) { o.tx = it.ox + (Math.random() - .5) * (it.W - 4); o.tz = it.oz + (Math.random() - .3) * (it.Dp - 5); }
       else { o.x += dx / d * o.speed * dt; o.z += dz / d * o.speed * dt; o.ry = Math.atan2(dx, dz); o.phase += o.speed * dt * 4.2; }
     } else if (o.mode === 'polo') {
       const a = o.home.s * Math.PI * 2 + t * .45; o.x = it.ox + Math.cos(a) * 4.4; o.z = 1.8 + Math.sin(a) * 3.2; o.ry = Math.atan2(-Math.sin(a), Math.cos(a));
@@ -3321,7 +3601,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 //  Aufbau + Spielschleife
 // =====================================================================
 prepBuildings(); buildCity(); placeVenueDoors(); buildGround(); const sky = buildSky(); buildLandmarks(); buildStreetFurniture();
-buildFacadeDetails(); buildStreetProps(); VENUES.forEach(buildInterior); buildWalkGraph(); initCrowd(); buildOutsideActs(); buildMinimap(); buildBars(); initBubbles(); buildRouteGraph(); initMapUI();
+buildFacadeDetails(); buildStreetProps(); buildShips(); buildTraffic(); VENUES.forEach(buildInterior); buildWalkGraph(); initCrowd(); buildOutsideActs(); buildMinimap(); buildBars(); initBubbles(); buildRouteGraph(); initMapUI();
 setYaw(-1.4);
 $('play').textContent = 'Los geht\'s ▶'; $('play').disabled = !$('age18').checked;
 
@@ -3348,6 +3628,7 @@ function frame() {
   camera.getWorldPosition(CAMPOS); camera.getWorldDirection(CAMDIR); CAMDIR.y = 0; CAMDIR.normalize();
   if (GAME.inside) { updateIndoorCrowd(npcDt, t); updateInteriorAnims(dt, t); }
   updateStreetCrowd(npcDt, t, P.x, P.z);
+  if (GAME.inside && !GAME.inside.view) shipCrowd.flush(); else { updateShips(dt, t); updateTraffic(dt, t); }
   updateAvatar(dt, t);
   // Übergänge (Abblenden)
   if (GAME.fadeTo > GAME.fade) { GAME.fade = Math.min(1, GAME.fade + dt * GAME.fadeSpeed); if (GAME.fade >= 1) { const cb = GAME.fadeCb; GAME.fadeCb = null; GAME.fadeTo = 0; cb && cb(); } }
@@ -3355,7 +3636,8 @@ function frame() {
   // Innen/außen: Nebel, Licht, Wasser
   if (!!GAME.inside !== wasInside) {
     wasInside = !!GAME.inside;
-    if (GAME.inside) { const [c, d] = HAZE[GAME.inside.theme]; scene.fog.color.set(c); scene.background.set(0); hemi.intensity = .12; moon.intensity = 0; water.visible = false; sky.visible = false; GAME.baseHaze = d; }
+    if (GAME.inside && GAME.inside.view) { scene.fog.color.copy(OUT_FOG); scene.background.copy(OUT_FOG); hemi.intensity = .3; moon.intensity = .45; water.visible = true; sky.visible = true; GAME.baseHaze = .00045; }
+    else if (GAME.inside) { const [c, d] = HAZE[GAME.inside.theme]; scene.fog.color.set(c); scene.background.set(0); hemi.intensity = .12; moon.intensity = 0; water.visible = false; sky.visible = false; GAME.baseHaze = d; }
     else { scene.fog.color.copy(OUT_FOG); scene.fog.density = OUT_FOG_D; scene.background.copy(OUT_FOG); hemi.intensity = .55; moon.intensity = .45; water.visible = true; sky.visible = true; }
   }
   if (GAME.inside) scene.fog.density = GAME.baseHaze + GAME.haze;
@@ -3373,7 +3655,7 @@ function frame() {
   composer.render();
 }
 frame();
-window.__game = { startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
+window.__game = { CARS, getTram: () => tram, KASE, SHIPS, startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
 </script>
 </body>
 </html>
