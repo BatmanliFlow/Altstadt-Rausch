@@ -37,6 +37,15 @@ Beim ersten Start braucht der Browser kurz Internet, weil die 3D-Engine (three.j
 | H | Tasten-Hinweis ein/aus |
 | Esc | Pause |
 
+## Neu: echte 3D-Menschen
+
+- Die Leute in deiner Nähe (bis ca. 20 m) sind jetzt **richtige 3D-Menschen** mit Skelett-Animationen: laufen, quatschen, sitzen, tanzen.
+  Jeder hat eigene Kleidung (T-Shirt, Pulli, Jacke, Jeans, Shorts, Rock), Hautfarbe, Frisur oder Bart, und Flasche, Altbier-Glas, Kippe oder Handy in der Hand.
+- Deine eigene Figur (Taste V) ist auch ein echtes Modell.
+- Weiter weg bleiben die schnellen, einfachen Figuren, damit das Spiel flüssig läuft. Bei „Grafik: schnell“ gibt es weniger echte Menschen.
+- Klappt nur mit den Start-Skripten (nicht per Doppelklick auf `index.html`). Abschalten im Startbildschirm: „🧍 Echte 3D-Menschen“.
+- Modelle und Animationen: [Quaternius](https://quaternius.com) (CC0), siehe `assets/people/LIZENZ.txt`.
+
 ## Neu: echte Stimmen und Gratis-KI
 
 - **Alle Leute haben jetzt echte Stimmen**, gratis und ohne Konto: über 170 verschiedene deutsche Stimmen (Frauen und Männer),
@@ -184,7 +193,8 @@ den Ordner `musik` aus. Die Songs bleiben nur auf deinem Rechner und werden nich
 - ~~Phase 6: freie KI-Gespräche~~ erledigt.
 - ~~Phase 7: weitere Substanzen~~ erledigt.
 - ~~Echte Stimmen + Gratis-KI~~ erledigt.
-- **Als Nächstes:** echte 3D-Menschen mit Animationen, Foto-Texturen, Schatten.
+- ~~Echte 3D-Menschen~~ erledigt.
+- **Als Nächstes:** Foto-Texturen für Boden und Fassaden, echte Schatten.
 - **Später:** Google Photorealistic 3D Tiles (Maps-Key) als echte Kulisse, Spotify als Musikquelle (Premium + Developer-App).
 
 ## Technik

@@ -1,0 +1,6 @@
+Menschen-Modelle, Frisuren und Animationen von Quaternius (https://quaternius.com)
+- Universal Base Characters
+- Universal Animation Library
+Lizenz: CC0 1.0 (gemeinfrei), https://creativecommons.org/publicdomain/zero/1.0/
+
+Für das Spiel verkleinert (Texturen 1024 px WebP, nur die benötigten Animationen) mit gltf-transform.

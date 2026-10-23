@@ -54,8 +54,14 @@ drunk/angry/whisper/sleepy/amused). Cache API (`altstadt-piper`), braucht localh
 `aiTalk` → `claudeTalk`/`localTalk`/`talkTo`, `aiReady()`. Gruppengespräche `TALKS`/`updateGroupTalks` (max. 3, Pausen in Echtzeit), `DIALOGS` als Vorrat, `groupScript` per LLM.
 Headless: Piper geht (NET=1 + http://localhost:8047), WebLLM nicht (kein WebGPU).
 
+Echte Menschen fertig: `HQ` (vor „Bewegungen“) = Pool aus Quaternius-Modellen (`assets/people/`: male/female.glb, anims.glb mit 13 UAL-Clips, Hair_*.glb),
+GLTFLoader + SkeletonUtils per Importmap. `People.pose` ruft `hqWant(o, d2)`: Kandidaten bis `HQ.R` (21 m) vom Spieler, nächste zuerst, Avatar `ME` immer;
+wer einen Slot hat (`o.hq`), wird nicht als Figur gezeichnet (Schatten bleibt). `hqUpdate` verteilt die Slots (getrennt nach Mann/Frau), `hqDress` setzt
+Kleidung über Shader-Uniforms (`uCut` = Saum/Ärmel/Hosenbein/Jacke, Bereiche nach T-Pose-Position `vBind`), `hqClip` wählt die Animation, Laufen läuft synchron zu `o.phase`.
+Körper schlanker über Knochen-Skalierung, Requisiten folgen `hand_r` aufrecht. Nur über http (nicht file://), sonst bleiben die Figuren. Lab: Aufstellung per eigener Testseite.
+
 Offen:
-- Als Nächstes: echte 3D-Menschen (Quaternius CC0, skinned + UAL-Animationen), Foto-Texturen, Schatten
+- Als Nächstes: Foto-Texturen (ambientCG CC0) für Boden/Fassaden, Lampen-Schatten/AO; Kopf-Blick und Trink-Bewegung für `HQ`
 - Später: Google 3D Tiles, Spotify, bessere NPC-Modelle, echtes Lallen über Mikro
 
 ## Aufbau

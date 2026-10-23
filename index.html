@@ -112,6 +112,7 @@
     <div class="row" style="font-size:14px;color:var(--dim);align-items:center">
       <span>👥 Leute: <select id="qCrowd"><option value="0.35">wenig (schwacher Rechner)</option><option value="0.65">mittel</option><option value="1" selected>viel (Wochenende!)</option></select></span>
       <span>🖥️ Grafik: <select id="qGfx"><option value="1">schnell</option><option value="1.5" selected>schön</option></select></span>
+      <label class="chk"><input type="checkbox" id="useHQ" checked> 🧍 Echte 3D-Menschen in deiner Nähe (lädt einmal ca. 14 MB)</label>
     </div>
     <details class="aibox" open><summary>🧠 KI-Gespräche und echte Stimmen</summary>
       <p>Rede mit allen: <b>T</b> gedrückt halten und sprechen, oder <b>Enter</b> und tippen. Die Gratis-Varianten laufen komplett auf deinem Rechner,
@@ -204,6 +205,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { Water } from 'three/addons/objects/Water.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 // =====================================================================
 //  Grundlagen
@@ -1796,14 +1799,17 @@ class People {
     const sc = o.scale, sit = o.mode === 'sit', baseY = o.gy + (sit ? o.y - .86 * sc : 0);
     this.e.set(o.pitch || 0, o.ry, o.roll || 0); this.q.setFromEuler(this.e);
     this.m4.compose(this.v.set(o.x, baseY, o.z), this.q, this.s.set(sc * o.wide, sc, sc));
-    const useHi = (d2 < 48 * 48 || o.always) && this.cnt[0] < this.hi.cap, m = useHi ? this.hi : this.lo, k = this.cnt[useHi ? 0 : 1]++;
-    if (k >= m.cap) return;
-    this.m4.toArray(m.instanceMatrix.array, k * 16);
-    const J = o.J, k4 = k * 4;
-    for (let j = 0; j < 4; j++) { const a = m.at[J_ATTRS[j]]; a[k4] = J[j * 4]; a[k4 + 1] = J[j * 4 + 1]; a[k4 + 2] = J[j * 4 + 2]; a[k4 + 3] = J[j * 4 + 3]; }
-    const st = m.at.aStyle, cl = m.at.aCol, S = o.style, C = o.col;
-    st[k4] = S[0]; st[k4 + 1] = S[1]; st[k4 + 2] = S[2]; st[k4 + 3] = o.hair + 8 * o.skirt + 16 * o.beard + 32 * (o.prop || 0) + 128 * o.shoe;
-    cl[k4] = C[0]; cl[k4 + 1] = C[1]; cl[k4 + 2] = C[2]; cl[k4 + 3] = C[3];
+    // nah dran: echtes 3D-Modell statt Figur (siehe hqUpdate)
+    if (!hqWant(o, d2)) {
+      const useHi = (d2 < 48 * 48 || o.always) && this.cnt[0] < this.hi.cap, m = useHi ? this.hi : this.lo, k = this.cnt[useHi ? 0 : 1]++;
+      if (k >= m.cap) return;
+      this.m4.toArray(m.instanceMatrix.array, k * 16);
+      const J = o.J, k4 = k * 4;
+      for (let j = 0; j < 4; j++) { const a = m.at[J_ATTRS[j]]; a[k4] = J[j * 4]; a[k4 + 1] = J[j * 4 + 1]; a[k4 + 2] = J[j * 4 + 2]; a[k4 + 3] = J[j * 4 + 3]; }
+      const st = m.at.aStyle, cl = m.at.aCol, S = o.style, C = o.col;
+      st[k4] = S[0]; st[k4 + 1] = S[1]; st[k4 + 2] = S[2]; st[k4 + 3] = o.hair + 8 * o.skirt + 16 * o.beard + 32 * (o.prop || 0) + 128 * o.shoe;
+      cl[k4] = C[0]; cl[k4 + 1] = C[1]; cl[k4 + 2] = C[2]; cl[k4 + 3] = C[3];
+    }
     if (d2 < 90 * 90 || o.always) {
       const ks = this.cnt[2]++;
       this.m4.makeScale(.95 * sc, 1, .95 * sc).setPosition(o.x, o.gy + (sit ? o.y : 0) + .015, o.z); this.m4.toArray(this.sh.instanceMatrix.array, ks * 16);
@@ -1818,6 +1824,214 @@ class People {
     this.cnt[0] = this.cnt[1] = this.cnt[2] = 0;
   }
   clear() { this.list.length = 0; this.flush(); }
+}
+
+// =====================================================================
+//  Echte Menschen in der Nähe: Quaternius-Modelle (CC0) mit Skelett-Animationen
+//  Die nächsten Leute werden als richtige 3D-Menschen gezeichnet, alle anderen bleiben die schnellen Figuren.
+//  Kleidung wird in den Körper gemalt (Bereiche in der T-Pose), Haare hängen am Kopf-Knochen.
+// =====================================================================
+const HQ = { state: 'off', slots: [], cand: [], n: 26, R: 21, clips: {}, hair: [], skinRef: {} };
+const HQ_HAIR = ['Hair_SimpleParted', 'Hair_Long', 'Hair_Buns', 'Hair_Buzzed', 'Hair_BuzzedFemale', 'Hair_Beard'];
+const HQ_SKIN_VS = /* glsl */`
+varying vec3 vBind;
+uniform vec4 uCut;
+uniform float uShoeY;
+float hqTop(vec3 b) {
+  float ax = abs(b.x);
+  if (ax > 0.19 && b.y > 1.22) return step(ax, uCut.y);                 // Arm (T-Pose): Ärmel bis uCut.y
+  float hole = length(vec2(b.x, (b.z + 0.03) * 0.8)) - (b.z > 0.0 ? 0.075 : 0.065);   // Halsausschnitt
+  return step(uCut.x, b.y) * step(b.y, 1.56) * (b.y > 1.4 ? step(0.0, hole) : 1.0);
+}
+float hqPants(vec3 b) { if (abs(b.x) > 0.19 && b.y > 1.22) return 0.0; return step(b.y, uCut.x) * step(uCut.z, b.y) * step(uShoeY, b.y); }
+`;
+const HQ_SKIN_FS = /* glsl */`
+varying vec3 vBind;
+uniform vec4 uCut;
+uniform float uShoeY;
+uniform vec3 uTop, uPants, uShoe, uSkin, uInner;
+uniform float uTrip, uTime;
+float hqTop(vec3 b) {
+  float ax = abs(b.x);
+  if (ax > 0.19 && b.y > 1.22) return step(ax, uCut.y);
+  float hole = length(vec2(b.x, (b.z + 0.03) * 0.8)) - (b.z > 0.0 ? 0.075 : 0.065);   // Halsausschnitt
+  return step(uCut.x, b.y) * step(b.y, 1.56) * (b.y > 1.4 ? step(0.0, hole) : 1.0);
+}
+float hqPants(vec3 b) { if (abs(b.x) > 0.19 && b.y > 1.22) return 0.0; return step(b.y, uCut.x) * step(uCut.z, b.y) * step(uShoeY, b.y); }
+`;
+function hqMaterial(src, fem) {
+  const m = src.clone();
+  const u = m.userData.u = { uCut: { value: new THREE.Vector4(.98, .33, .1, 0) }, uTop: { value: new THREE.Color() }, uPants: { value: new THREE.Color() },
+    uShoe: { value: new THREE.Color() }, uShoeY: { value: fem ? .135 : .105 }, uSkin: { value: new THREE.Color(1, 1, 1) }, uInner: { value: new THREE.Color() } };
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, u); sh.uniforms.uTrip = TRIP; sh.uniforms.uTime = TIME;
+    sh.vertexShader = HQ_SKIN_VS + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+  vBind = position;
+  float hqT = hqTop(position), hqP = hqPants(position), hqS = step(position.y, uShoeY);
+  transformed += normal * (hqT * (0.011 + 0.01 * uCut.w) + hqP * 0.007 + hqS * 0.012);`);
+    sh.fragmentShader = HQ_SKIN_FS + sh.fragmentShader
+      .replace('#include <map_fragment>', `#include <map_fragment>
+  float cT = hqTop(vBind), cP = hqPants(vBind), cS = step(vBind.y, uShoeY);
+  vec3 cloth = cT * uTop + cP * uPants + cS * uShoe;
+  if (uCut.w > 0.5 && cT > 0.5 && abs(vBind.x) < 0.045 && vBind.z > 0.0 && vBind.y < 1.45) cloth = uInner;   // offene Jacke
+  float cm = clamp(cT + cP + cS, 0.0, 1.0);
+  float wr = 0.86 + 0.14 * sin(vBind.y * 70.0 + sin(vBind.x * 37.0) * 2.5) * sin(vBind.x * 23.0 + vBind.z * 31.0);
+  cloth *= wr * (cP > 0.5 && vBind.y > uCut.x - 0.035 ? 0.55 : 1.0);   // Gürtel
+  vec3 hqC = mix(uSkin * clamp(dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)), 0.0, 2.0), cloth, cm);
+  if (uTrip > 0.01) { float a = uTrip * (vBind.y * 4.0 + uTime * 1.5); vec3 k = vec3(0.57735); vec3 hc = hqC * cos(a) + cross(k, hqC) * sin(a) + k * dot(k, hqC) * (1.0 - cos(a)); hqC = mix(hqC, max(hc, 0.0) * 1.4, uTrip); }
+  diffuseColor.rgb = hqC;`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 0.88, cm);')
+      .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale * (1.0 - cm * 0.9);'));
+  };
+  m.customProgramCacheKey = () => 'hq-skin';
+  return m;
+}
+// Durchschnittliche Hautfarbe der Textur (damit Hauttöne aus SKIN passen)
+function hqTexAvg(tex) {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); x.drawImage(tex.image, 0, 0, 64, 64);
+  const d = x.getImageData(0, 0, 64, 64).data; let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) if (d[i] > 90 && d[i] > d[i + 2] + 20) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+  return new THREE.Color().setRGB(r / n / 255, g / n / 255, b / n / 255, THREE.SRGBColorSpace);
+}
+function hqPropMeshes() {
+  const M = (geo, col, em = 0) => new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: col, roughness: .25, emissive: em ? col : 0, emissiveIntensity: em }));
+  const bottle = new THREE.Group();
+  bottle.add(M(new THREE.CylinderGeometry(.033, .033, .17, 10), 0x1a4a12), M(new THREE.CylinderGeometry(.012, .03, .09, 8), 0x1a4a12));
+  bottle.children[1].position.y = .13;
+  const glass = M(new THREE.CylinderGeometry(.03, .027, .12, 10), 0x6a2a08); glass.material.transparent = true; glass.material.opacity = .85;
+  const cig = new THREE.Group(); cig.add(M(new THREE.CylinderGeometry(.0045, .0045, .075, 5), 0xeeeeee), M(new THREE.SphereGeometry(.006, 5, 4), 0xff5010, 2));
+  cig.children[1].position.y = .038;
+  const phone = M(new THREE.BoxGeometry(.075, .15, .009), 0x8ab0ff, .9);
+  return [null, bottle, glass, cig, phone];
+}
+async function hqLoad() {
+  if (location.protocol === 'file:' || HQ.state !== 'off') return;
+  HQ.state = 'loading';
+  try {
+    const L = new GLTFLoader(), ld = n => L.loadAsync('assets/people/' + n + '.glb');
+    const [male, female, anims, ...hair] = await Promise.all(['male', 'female', 'anims', ...HQ_HAIR].map(ld));
+    for (const c of anims.animations) {
+      // Wurzel bleibt am Platz, nur das Becken darf wippen
+      c.tracks = c.tracks.filter(t => t.name !== 'root.position');
+      HQ.clips[c.name] = c;
+    }
+    HQ.hair = hair.map(g => { let m; g.scene.traverse(o => { if (o.isSkinnedMesh) m = o; }); return m; });
+    HQ.base = { m: male, f: female };
+    for (const [k, g] of Object.entries(HQ.base)) g.scene.traverse(o => { if (o.isSkinnedMesh && /superhero/i.test(o.name)) HQ.skinRef[k] = hqTexAvg(o.material.map); });
+    const nf = Math.round(HQ.n * .45);
+    for (let i = 0; i < HQ.n; i++) HQ.slots.push(hqSlot(i < nf));
+    HQ.state = 'ready';
+  } catch (e) { HQ.state = 'fail'; console.warn('Menschen-Modelle:', e); }
+}
+function hqSlot(fem) {
+  const base = HQ.base[fem ? 'f' : 'm'], root = SkeletonUtils.clone(base.scene), bones = {};
+  let body, brows, arm;
+  root.traverse(o => {
+    if (o.isBone) bones[o.name] = o;
+    if (o.name === 'Armature') arm = o;
+    if (o.isSkinnedMesh) { o.frustumCulled = false; if (/superhero/i.test(o.name)) body = o; else if (/brow/i.test(o.name)) brows = o; }
+  });
+  body.material = hqMaterial(body.material, fem);
+  const hairMat = HQ.hair[0].material.clone(); hairMat.side = THREE.DoubleSide;
+  if (brows) brows.material = hairMat;
+  const hairs = HQ.hair.map(src => {
+    const m = new THREE.SkinnedMesh(src.geometry, hairMat); m.frustumCulled = false; m.visible = false; arm.add(m);
+    m.bind(new THREE.Skeleton(src.skeleton.bones.map(b => bones[b.name]), src.skeleton.boneInverses), src.bindMatrix);
+    return m;
+  });
+  // Rock: offener Kegel am Becken
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(.165, .25, .36, 18, 1, true), new THREE.MeshStandardMaterial({ roughness: .85, side: THREE.DoubleSide }));
+  root.updateMatrixWorld(true);
+  const attach = (obj, bone, pos, rot) => {
+    const w = new THREE.Matrix4().compose(new THREE.Vector3(...pos), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rot)), new THREE.Vector3(1, 1, 1));
+    w.premultiply(bone.matrixWorld.clone().invert()); w.decompose(obj.position, obj.quaternion, obj.scale); bone.add(obj);
+  };
+  attach(skirt, bones.pelvis, [0, .84, -.035], [0, 0, 0]); skirt.visible = false;
+  // Requisiten: Griffpunkt in der rechten Faust (in der T-Pose bestimmt), Flasche/Glas bleiben aufrecht
+  const hp = new THREE.Vector3(); bones.hand_r.getWorldPosition(hp);
+  const grip = new THREE.Vector3(hp.x - .075, hp.y - .01, hp.z + .035).applyMatrix4(bones.hand_r.matrixWorld.clone().invert());
+  const props = hqPropMeshes();
+  for (const p of props) if (p) { p.visible = false; scene.add(p); }
+  // Superhelden-Körper etwas normaler machen: schmalere Brust, dünnere Arme und Oberschenkel
+  bones.spine_03.scale.set(1, .88, .9);
+  for (const b of ['upperarm_l', 'upperarm_r']) bones[b].scale.set(1, .84, .84);
+  for (const b of ['thigh_l', 'thigh_r']) bones[b].scale.set(1, .92, .92);
+  root.visible = false; scene.add(root);
+  const mixer = new THREE.AnimationMixer(root), acts = {};
+  for (const [n, c] of Object.entries(HQ.clips)) acts[n] = mixer.clipAction(c);
+  return { grip, fem, root, bones, body, hairs, hairMat, skirt, props, mixer, acts, cur: null, o: null, h: fem ? 1.767 : 1.81 };
+}
+function hqDress(s, o) {
+  const u = s.body.material.userData.u, C = o.col, st = o.style;
+  const lin = (f, c) => c.setHex(f).convertSRGBToLinear();
+  lin(C[0], u.uTop.value); lin(C[1], u.uPants.value); lin(C[3], s.hairMat.color);
+  s.hairMat.color.multiplyScalar(2.2);                           // Haartextur ist grau, Farbe kommt als Tönung
+  const sk = new THREE.Color(); lin(C[2], sk); const ref = HQ.skinRef[s.fem ? 'f' : 'm'];
+  const rl = .2126 * ref.r + .7152 * ref.g + .0722 * ref.b; u.uSkin.value.copy(sk).multiplyScalar(1 / rl);
+  u.uShoe.value.setRGB(...(o.shoe === 1 ? [.62, .62, .6] : o.shoe === 2 ? [.075, .035, .015] : [.012, .012, .014]));
+  const jacket = (o.seed | 0) % 4 === 0 && st[1] < 1;
+  u.uCut.value.set((s.fem ? .95 : .98) * (st[0] / .99), st[1] > 1 ? .33 : .66, o.skirt ? .62 : st[2] > .3 ? .5 : .1, jacket ? 1 : 0);
+  if (jacket) { lin(C[0], u.uInner.value); lin(TOPS[(o.seed * 7 | 0) % TOPS.length], u.uTop.value); }
+  s.skirt.visible = !!o.skirt; if (o.skirt) s.skirt.material.color.copy(u.uPants.value);
+  const hi = o.hair === 0 ? -1 : o.hair === 2 ? 1 : o.hair === 3 ? 2 : o.hair === 4 ? 3 : s.fem ? 4 : 0;
+  s.hairs.forEach((h, i) => h.visible = i === hi || (i === 5 && !!o.beard));
+}
+function hqClip(o) {
+  const walking = o.mode === 'walk' || o.mode === 'roam' || o.mode === 'polo';
+  if (walking) return o.always && P.speed > 3.6 ? 'Jog_Fwd_Loop' : o.drunk && (o.seed | 0) % 2 ? 'Walk_Formal_Loop' : 'Walk_Loop';
+  if (o.mode === 'sit') return o.act === 'talk' || o.act === 'laugh' ? 'Sitting_Talking_Loop' : 'Sitting_Idle_Loop';
+  if (o.mode === 'dance' || o.act === 'cheer') return 'Dance_Loop';
+  if (o.act === 'counter') return 'Interact';
+  if (o.act === 'talk' || o.act === 'laugh' || o.act === 'wave' || o.act === 'sing' || o.inTalk && o.lookAt === null) return 'Idle_Talking_Loop';
+  return 'Idle_Loop';
+}
+const HQ_SKIP = o => o.busker || o.act === 'guitar' || o.act === 'drum' || o.mode === 'polo' || o.pitch;
+// wird aus People.pose gerufen: merkt sich Kandidaten, true = Figur nicht zeichnen (macht das HQ-Modell)
+function hqWant(o, d2) {
+  if (HQ.state !== 'ready' || HQ_SKIP(o)) return false;
+  const pd2 = (o.x - P.x) ** 2 + (o.z - P.z) ** 2;   // Abstand zum Spieler (nicht zur Kamera), Avatar zuerst
+  if (o === ME || (pd2 < HQ.R * HQ.R && d2 < HQ.R * HQ.R)) HQ.cand.push(o), o.hqD = o === ME ? -1 : d2;
+  return !!o.hq;
+}
+const _hqE = new THREE.Euler(0, 0, 0, 'YXZ');
+function hqUpdate(dt) {
+  if (HQ.state !== 'ready') return;
+  const cand = HQ.cand.sort((a, b) => a.hqD - b.hqD), want = new Set();
+  const free = { true: 0, false: 0 }, need = { true: 0, false: 0 };
+  for (const s of HQ.slots) if (!s.o) free[s.fem]++;
+  for (const o of cand) { const f = !!o.fem; if (want.size >= HQ.slots.length) break; if (o.hq || free[f] > need[f]) { want.add(o); if (!o.hq) need[f]++; } }
+  for (const s of HQ.slots) if (s.o && !want.has(s.o)) { s.o.hq = null; s.o = null; s.root.visible = false; s.cur = null; s.mixer.stopAllAction(); for (const p of s.props) if (p) p.visible = false; }
+  for (const o of want) {
+    if (o.hq) continue;
+    const s = HQ.slots.find(s => !s.o && s.fem === !!o.fem); if (!s) continue;
+    s.o = o; o.hq = s; hqDress(s, o); s.root.visible = true;
+  }
+  HQ.cand.length = 0;
+  for (const s of HQ.slots) {
+    const o = s.o; if (!o) continue;
+    // Animation wechseln (weich überblenden)
+    const n = hqClip(o);
+    if (n !== s.cur) {
+      const a = s.acts[n], p = s.cur && s.acts[s.cur];
+      a.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).play();
+      if (p) a.crossFadeFrom(p, .3, false); else a.time = (o.seed % 1) * a.getClip().duration;
+      s.cur = n;
+    }
+    const a = s.acts[n], dur = a.getClip().duration;
+    if (/Walk|Jog/.test(n)) { a.timeScale = 0; a.time = frac(o.phase / (Math.PI * 2) + .25) * dur; }
+    else if (n === 'Dance_Loop') a.timeScale = BEAT.bpm / 120;
+    s.mixer.update(Math.max(NPC_DT, dt * .5));
+    if (n.startsWith('Idle')) { s.bones.upperarm_l.rotateX(-.28); s.bones.upperarm_r.rotateX(-.28); }   // Arme näher am Körper
+    // Lage
+    const sc = o.scale * 1.74 / s.h, sit = o.mode === 'sit';
+    _hqE.set(0, o.ry, o.roll || 0); s.root.quaternion.setFromEuler(_hqE);
+    const fx = Math.sin(o.ry), fz = Math.cos(o.ry), back = sit ? .3 * sc : 0;
+    s.root.position.set(o.x + fx * back, o.gy + (sit ? o.y - .45 * sc : 0), o.z + fz * back);
+    s.root.scale.set(sc * (.55 + .45 * o.wide), sc, sc);
+    s.props.forEach((p, i) => { if (p) p.visible = o.prop === i; });
+    const pr = s.props[o.prop];
+    if (pr) { s.bones.hand_r.updateWorldMatrix(true, false); pr.position.copy(s.grip).applyMatrix4(s.bones.hand_r.matrixWorld); pr.quaternion.copy(s.root.quaternion); pr.scale.setScalar(sc); }
+  }
 }
 
 // ---------- Bewegungen ----------
@@ -4363,7 +4577,7 @@ const aiKeyInfo = () => { $('aiKeyInfo').textContent = aiKey() ? '✅ Key gespei
 $('aiKeySave').addEventListener('click', () => { const k = $('aiKeyIn').value.trim(); if (!k) return; try { localStorage.setItem('altstadt-ai-key', k); } catch (e) {} $('aiKeyIn').value = ''; AI.client = null; aiKeyInfo(); });
 $('aiKeyDel').addEventListener('click', () => { try { localStorage.removeItem('altstadt-ai-key'); } catch (e) {} AI.client = null; aiKeyInfo(); });
 aiKeyInfo();
-$('aiModeSel').value = aiMode(); try { if (localStorage.getItem('altstadt-voices') === '0') $('useVoices').checked = false; } catch (e) {}
+$('aiModeSel').value = aiMode(); try { if (localStorage.getItem('altstadt-hq') === '0') $('useHQ').checked = false; } catch (e) {} try { if (localStorage.getItem('altstadt-voices') === '0') $('useVoices').checked = false; } catch (e) {}
 $('folder').addEventListener('change', e => {
   const n = Sound.setFiles([...e.target.files]);
   const per = Object.entries(FILES).map(([g, l]) => `${g}: ${l.length}`).join(' · ');
@@ -4371,6 +4585,8 @@ $('folder').addEventListener('change', e => {
 });
 $('play').addEventListener('click', () => {
   RADIO.on = $('useRadio').checked; VOICE.on = $('useVoices').checked;
+  if ($('useHQ').checked) { HQ.n = +$('qGfx').value > 1 ? 36 : 16; hqLoad(); }
+  try { localStorage.setItem('altstadt-hq', $('useHQ').checked ? '1' : '0'); } catch (e) {}
   try { localStorage.setItem('altstadt-ai-mode', $('aiModeSel').value); localStorage.setItem('altstadt-voices', VOICE.on ? '1' : '0'); } catch (e) {}
   setTimeout(() => { voiceStart(); localStart(); }, 1500);
   if (!Sound.ready) Sound.init(); else Sound.ctx.resume();
@@ -4417,7 +4633,7 @@ function frame() {
   if (GAME.inside) { updateIndoorCrowd(npcDt, t); updateInteriorAnims(dt, t); }
   updateStreetCrowd(npcDt, t, P.x, P.z);
   if (GAME.inside && !GAME.inside.view) shipCrowd.flush(); else { updateShips(dt, t); updateTraffic(dt, t); }
-  updateAvatar(dt, t);
+  updateAvatar(dt, t); hqUpdate(dt);
   // Übergänge (Abblenden)
   if (GAME.fadeTo > GAME.fade) { GAME.fade = Math.min(1, GAME.fade + dt * GAME.fadeSpeed); if (GAME.fade >= 1) { const cb = GAME.fadeCb; GAME.fadeCb = null; GAME.fadeTo = 0; cb && cb(); } }
   else GAME.fade = Math.max(0, GAME.fade - dt * (GAME.blackout ? .4 : 2.5));
@@ -4446,7 +4662,7 @@ function frame() {
   composer.render();
 }
 frame();
-window.__game = { VOICE, voiceStart, voiceSay, TALKS, updateGroupTalks, LOCAL, PIPER, RADIO, FX, consume, inventoryMenu, openTyping, aiTarget, aiTalk, AI, CARS, getTram: () => tram, KASE, SHIPS, startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
+window.__game = { HQ, VOICE, voiceStart, voiceSay, TALKS, updateGroupTalks, LOCAL, PIPER, RADIO, FX, consume, inventoryMenu, openTyping, aiTarget, aiTalk, AI, CARS, getTram: () => tram, KASE, SHIPS, startKaraoke, KARAOKE, MIC, startMic, NAV, setRoute, openMap, closeMap, CAM, ME, GAME, SUB, FX, P, VENUES, setYaw, enterVenue, leaveVenue, Sound, scene, camera, renderer, street, indoor, smoke, drink, P };
 </script>
 </body>
 </html>
